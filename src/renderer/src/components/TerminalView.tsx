@@ -160,6 +160,7 @@ export function TerminalView({ sessionId, isFocused }: TerminalViewProps) {
     const { terminal, fitAddon } = cached
 
     if (!cached.attached) {
+      containerRef.current.innerHTML = ''
       terminal.open(containerRef.current)
       cached.attached = true
     } else {

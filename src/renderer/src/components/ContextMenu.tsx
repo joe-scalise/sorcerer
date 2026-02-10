@@ -6,7 +6,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import { useToastStore } from '../stores/useToastStore'
 import {
   PlusIcon, CopyIcon, TrashIcon, SplitHorizontalIcon, SplitVerticalIcon,
-  RefreshIcon, UploadIcon, ExternalLinkIcon, ArchiveIcon, RotateCcwIcon, EditIcon, PlayIcon, StopIcon
+  RefreshIcon, UploadIcon, ExternalLinkIcon, ArchiveIcon, RotateCcwIcon, EditIcon, PlayIcon, StopIcon, MergeIcon
 } from './icons'
 
 type MenuItem =
@@ -198,6 +198,7 @@ export function ContextMenu() {
           addToast('Failed to open remote', 'error')
         }
       }},
+      { label: 'Land on Main', icon: <MergeIcon className={iconClass} />, action: () => openDialog('land-session', contextMenu.targetId) },
       { type: 'separator' },
       { label: 'Archive Session', icon: <ArchiveIcon className={iconClass} />, action: () => openDialog('archive-session', contextMenu.targetId) },
       { type: 'separator' },

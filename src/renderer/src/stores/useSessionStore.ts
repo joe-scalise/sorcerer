@@ -15,6 +15,7 @@ interface SessionState {
   restartSession: (sessionId: string) => Promise<void>
   resumeSession: (sessionId: string) => Promise<void>
   restoreSession: (sessionId: string) => Promise<void>
+  landOnMain: (sessionId: string) => Promise<void>
   pushBranch: (sessionId: string) => Promise<{ pushed: boolean; error?: string }>
   setActiveSession: (id: string) => void
   updateSessionInStore: (id: string, updates: Partial<Session>) => void
@@ -41,9 +42,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const session = await window.sorcerer.session.create(projectId, name)
       if (!session) return null
       set((state) => ({
-        sessions: [session, ...state.sessions],
-        activeSessionId: session.id
+        sessions: [session, ...state.sessions]
       }))
+      get().setActiveSession(session.id)
       return session
     } catch (err) {
       console.error('[session-store] createSession failed:', err)
@@ -133,6 +134,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch (err) {
       console.error('[session-store] restoreSession failed:', err)
     }
+  },
+
+  landOnMain: async (sessionId) => {
+    const result = await window.sorcerer.session.landOnMain(sessionId)
+    if (!result.landed) {
+      throw new Error(result.error || 'Landing failed')
+    }
+
+    // Clear from split panels
+    const { splitRoot } = useUIStore.getState()
+    if (splitRoot) {
+      useUIStore.setState({ splitRoot: clearSessionFromTree(splitRoot, sessionId) })
+    }
+
+    set((state) => ({
+      sessions: state.sessions.filter((s) => s.id !== sessionId),
+      activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
+    }))
   },
 
   pushBranch: async (sessionId) => {

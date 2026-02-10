@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { useSessionStore } from './useSessionStore'
 import type { SplitNode, SplitLeaf, SplitBranch } from '../types'
 
-type DialogType = 'new-session' | 'add-project' | 'delete-session' | 'archive-session' | 'settings' | 'add-agent' | 'delete-agent' | null
+type DialogType = 'new-session' | 'add-project' | 'delete-session' | 'archive-session' | 'land-session' | 'settings' | 'add-agent' | 'delete-agent' | null
 
 interface ContextMenu {
   x: number

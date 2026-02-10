@@ -264,6 +264,18 @@ export function StopIcon(props: IconProps) {
   )
 }
 
+export function MergeIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M6 9v9" />
+      <path d="M9 6h6a3 3 0 0 1 3 3v6" />
+    </svg>
+  )
+}
+
 export function PlayIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>

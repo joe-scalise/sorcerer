@@ -382,6 +382,58 @@ export function registerIPC(
     return worktreeService.getSessionGitStatus(session.worktree_path as string)
   })
 
+  ipcMain.handle('session:land-on-main', async (_event, sessionId: string) => {
+    // Kill running process if active
+    if (ptyService.isRunning(sessionId)) {
+      ptyService.kill(sessionId)
+    }
+
+    const session = dbService.getSession(sessionId)
+    if (!session) throw new Error('Session not found')
+    const project = dbService.getProject(session.project_id as string)
+    if (!project) throw new Error('Project not found')
+
+    // Auto-commit dirty work in the worktree
+    if (session.worktree_path && fs.existsSync(session.worktree_path as string)) {
+      const commitResult = await worktreeService.autoCommit(session.worktree_path as string)
+      if (commitResult.committed) {
+        console.log('[session:land-on-main] Auto-committed:', commitResult.message)
+      }
+    }
+
+    // Squash merge to main
+    const mergeResult = await worktreeService.squashMergeToMain(
+      project.path as string,
+      session.branch as string,
+      session.name as string
+    )
+
+    if (!mergeResult.merged) {
+      return { landed: false, error: mergeResult.error }
+    }
+
+    // Remove worktree + local branch
+    if (session.worktree_path && fs.existsSync(session.worktree_path as string)) {
+      try {
+        await worktreeService.remove(project.path as string, session.worktree_path as string, session.branch as string)
+      } catch (err) {
+        console.log('[session:land-on-main] Worktree cleanup failed:', err)
+      }
+    }
+
+    // Delete remote branch (fire-and-forget)
+    if (session.branch) {
+      worktreeService.deleteRemoteBranch(project.path as string, session.branch as string).then((r) => {
+        if (r.deleted) console.log('[session:land-on-main] Remote branch deleted')
+      })
+    }
+
+    // Remove session from DB
+    dbService.removeSession(sessionId)
+
+    return { landed: true }
+  })
+
   ipcMain.handle('session:restore', (_event, sessionId: string) => {
     dbService.updateSession(sessionId, { status: 'idle', archived_at: null })
     return dbService.getSession(sessionId)

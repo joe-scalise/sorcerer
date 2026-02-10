@@ -24,7 +24,8 @@ const api = {
     checkDeleteSafety: (sessionId: string) => ipcRenderer.invoke('session:check-delete-safety', sessionId),
     pushBranch: (sessionId: string) => ipcRenderer.invoke('session:push-branch', sessionId),
     openRemote: (sessionId: string) => ipcRenderer.invoke('session:open-remote', sessionId),
-    restore: (sessionId: string) => ipcRenderer.invoke('session:restore', sessionId)
+    restore: (sessionId: string) => ipcRenderer.invoke('session:restore', sessionId),
+    landOnMain: (sessionId: string) => ipcRenderer.invoke('session:land-on-main', sessionId)
   },
 
   agent: {
