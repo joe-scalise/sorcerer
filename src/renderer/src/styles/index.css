@@ -1832,7 +1832,8 @@ body {
 }
 
 .sidebar-update-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1841,7 +1842,7 @@ body {
   background: transparent;
   color: var(--accent);
   font: inherit;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
