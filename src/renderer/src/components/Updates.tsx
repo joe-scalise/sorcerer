@@ -84,7 +84,6 @@ export function SidebarUpdate({ collapsed = false }: { collapsed?: boolean }) {
       disabled={installing}
       onClick={() => { void run('install') }}
     >{installing ? 'Preparing to restart…' : 'Restart and install'}</button>}
-    {state.downloaded && !installing && <p className="sidebar-update-detail sidebar-update-hint">When you’re ready. Terminals and agents will stop.</p>}
     {error && <p className="update-error" role="alert">{error}</p>}
   </div>
 }
