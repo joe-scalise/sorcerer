@@ -22,7 +22,7 @@
 | **12-20s** | **The Solution:** Switch to Sorcerer. Click 'New Session'. Show 'Automatic Worktree' creation. | "Meet Sorcerer. The orchestration layer for AI-first developers." |
 | **20-30s** | **Feature Highlights:** Fast cuts of Agent Tree, Briefing Panel, and Remote Control toggle. | "Automate your isolation. Sorcerer handles the worktrees, the branches, and the context—so you can scale your output across every project." |
 | **30-40s** | **The Briefing:** Show AI Briefing generating a summary of all active sessions. | "Get instant orientation. Our AI Briefing tells you exactly where your agents left off, what needs attention, and what's ready to land." |
-| **40-45s** | **CTA:** Sorcerer logo over clean particle background. URL: `github.com/aetherci-hq/sorcerer` | "Sorcerer. Don't just code. Direct. Download now on GitHub." |
+| **40-45s** | **CTA:** Sorcerer logo over clean particle background. URL: `github.com/joe-scalise/sorcerer` | "Sorcerer. Don't just code. Direct. Download now on GitHub." |
 
 ---
 

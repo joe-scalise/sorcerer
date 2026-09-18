@@ -10,7 +10,7 @@ You should:
 
 1. Check whether a matching GitHub issue already exists.
 2. If no good existing issue exists, open a new issue at:
-   `https://github.com/aetherci-hq/sorcerer/issues`
+   `https://github.com/joe-scalise/sorcerer/issues`
 3. Keep the current task moving unless the discovered issue is a blocker or a security problem.
 
 ## When To Open An Issue

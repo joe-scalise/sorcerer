@@ -1,7 +1,15 @@
 {
   "name": "sorcerer",
   "version": "1.8.0",
-  "description": "Claude Code Agent Orchestration App",
+  "description": "Multi-session desktop workbench for orchestrating AI coding agents in isolated Git worktrees.",
+  "homepage": "https://sorcerer.sh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joe-scalise/sorcerer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joe-scalise/sorcerer/issues"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -61,8 +69,14 @@
     "afterSign": "./scripts/notarize-macos.js",
     "artifactName": "Sorcerer-${version}-${os}-${arch}.${ext}"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "ai-agents",
+    "coding-agents",
+    "electron",
+    "git-worktrees",
+    "orchestration"
+  ],
+  "author": "Joe Scalise",
   "license": "Apache-2.0",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

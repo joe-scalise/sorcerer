@@ -4,7 +4,7 @@ import { useUIStore } from '../../stores/useUIStore'
 import { useToastStore } from '../../stores/useToastStore'
 import { Dialog, DialogActions, DialogButton, DialogField } from '../Dialog'
 
-const FEEDBACK_ISSUE_URL = 'https://github.com/aetherci-hq/sorcerer/issues/new'
+const FEEDBACK_ISSUE_URL = 'https://github.com/joe-scalise/sorcerer/issues/new'
 
 function buildFeedbackTitle(feedback: string): string {
   const trimmed = feedback.trim().replace(/\s+/g, ' ')

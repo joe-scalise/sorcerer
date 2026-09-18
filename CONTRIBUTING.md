@@ -16,7 +16,7 @@ By contributing to Sorcerer, you agree that your contributions will be licensed 
 
 If you discover a real bug or product gap that is outside the immediate scope of your assigned task, check existing GitHub issues and file a new one when needed:
 
-- Issues: https://github.com/aetherci-hq/sorcerer/issues
+- Issues: https://github.com/joe-scalise/sorcerer/issues
 
 Include a concise problem statement, impact, reproduction details when possible, and file references when known. Do not open public issues for security vulnerabilities.
 

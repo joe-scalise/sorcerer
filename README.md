@@ -2,14 +2,14 @@
 
 The desktop workbench for AI command-line coding tools. Not an IDE — a `mission control` for working with multiple coding agents.
 
-![Sorcerer](Sorcerer_Screenshot.png)
+![Sorcerer desktop interface showing four concurrent AI coding-agent sessions](Sorcerer_Screenshot.png)
 
 
 ## Download
 
 Grab the latest release for your platform:
 
-**[Download for Windows, macOS, and Linux](https://github.com/aetherci-hq/sorcerer/releases/latest)**
+**[Download for Windows, macOS, and Linux](https://github.com/joe-scalise/sorcerer/releases/latest)**
 
 **Android companion:** Sideloadable Sorcerer Remote APKs use independent
 `android-v*` releases. See the [Android setup guide](docs/android.md).
@@ -64,4 +64,4 @@ Please help us make Sorcerer better. Please read our [Contributing Guidelines](C
 
 ## License
 
-[Apache-2.0](LICENSE) — Built by [AetherCI](https://aetherci.com)
+[Apache-2.0](LICENSE) — Created by [Joe Scalise](https://scalise.us) and built and released with [AetherCI](https://aetherci.com).

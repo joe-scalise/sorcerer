@@ -747,7 +747,7 @@ export function registerIPC(
 
   ipcMain.handle('system:check-update', async () => {
     try {
-      const res = await fetch('https://api.github.com/repos/aetherci-hq/sorcerer/releases/latest', {
+      const res = await fetch('https://api.github.com/repos/joe-scalise/sorcerer/releases/latest', {
         headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'Sorcerer' }
       })
       if (!res.ok) return null
