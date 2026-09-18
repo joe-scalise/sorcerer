@@ -133,9 +133,10 @@ export function useKeyboardShortcuts() {
         setActiveSession(ids[nextIndex])
       }
 
-      // Ctrl+K — focus search
+      // Ctrl+K — reveal the sidebar search, or refocus it if already open
       if (e.ctrlKey && e.key === 'k') {
         e.preventDefault()
+        useUIStore.getState().openSearch()
         const searchInput = document.querySelector('.search-input') as HTMLInputElement | null
         searchInput?.focus()
       }
@@ -209,12 +210,15 @@ export function useKeyboardShortcuts() {
         const target = e.target as HTMLElement | null
         if (target?.closest('.xterm, textarea, [contenteditable="true"], input:not(.search-input)')) return
         const searchInput = document.querySelector('.search-input') as HTMLInputElement | null
-        if (document.activeElement === searchInput) {
-          const { searchQuery, setSearchQuery } = useUIStore.getState()
+        if (document.activeElement === searchInput || target?.closest('.search-container')) {
+          e.preventDefault()
+          const { searchQuery, setSearchQuery, closeSearch } = useUIStore.getState()
           if (searchQuery) {
             setSearchQuery('')
+            searchInput?.focus()
           } else {
-            searchInput?.blur()
+            closeSearch()
+            document.querySelector<HTMLButtonElement>('.sidebar-search-toggle')?.focus()
             focusActiveTerminal()
           }
         } else {

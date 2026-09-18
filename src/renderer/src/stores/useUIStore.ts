@@ -76,6 +76,9 @@ interface UIState {
   setAgentPaneHeight: (height: number) => void
   searchQuery: string
   setSearchQuery: (query: string) => void
+  searchOpen: boolean
+  openSearch: () => void
+  closeSearch: () => void
 
   // Split view (tree-based, limitless)
   splitRoot: SplitNode | null
@@ -351,6 +354,7 @@ export const useUIStore = create<UIState>()(
         sidebarWidth: SIDEBAR_DEFAULT,
         agentPaneHeight: AGENT_PANE_DEFAULT,
         searchQuery: '',
+        searchOpen: false,
         sidebarSelection: null
       }),
 
@@ -379,7 +383,10 @@ export const useUIStore = create<UIState>()(
         }),
 
       searchQuery: '',
-      setSearchQuery: (query) => set({ searchQuery: query }),
+      setSearchQuery: (query) => set({ searchQuery: query, ...(query ? { searchOpen: true } : {}) }),
+      searchOpen: false,
+      openSearch: () => set({ searchOpen: true, sidebarCollapsed: false, sidebarHidden: false }),
+      closeSearch: () => set({ searchOpen: false, searchQuery: '' }),
 
       sidebarCollapsed: false,
       sidebarHidden: false,
