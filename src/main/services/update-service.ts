@@ -62,6 +62,26 @@ function normalizeNotes(notes: UpdateInfo['releaseNotes']): string | undefined {
   return undefined
 }
 
+function updateErrorMessage(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+  if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
+    return 'The latest published release does not include automatic-update files yet. Please check again after the next desktop release is published.'
+  }
+  if (code === 'ERR_CHECKSUM_MISMATCH') {
+    return 'The downloaded update failed its integrity check. Please retry the download.'
+  }
+  const message = error instanceof Error ? error.message : ''
+  if (/net::ERR_|ENOTFOUND|ECONNRESET|ETIMEDOUT/.test(message)) {
+    return 'Could not connect to the update server. Check your connection and try again.'
+  }
+  // Updater errors can embed HTTP headers, stack traces, and misleading token
+  // advice inside Error.message. Keep those diagnostics out of the product UI.
+  if (!message || message.length > 240 || /[\r\n]|Headers:|HttpError:/.test(message)) {
+    return 'The update request failed. Please try again later.'
+  }
+  return message
+}
+
 /** Only the application renderer's top-level frame may control installation. */
 export function isTrustedUpdateSender(
   event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>,
@@ -291,7 +311,7 @@ export class UpdateService {
   }
 
   private fail(error: unknown): void {
-    this.publish({ status: 'error', error: error instanceof Error ? error.message : 'The update could not be completed. Please try again.' })
+    this.publish({ status: 'error', error: updateErrorMessage(error) })
   }
 
   private publish(patch: Partial<UpdateState>): void {

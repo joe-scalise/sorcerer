@@ -69,6 +69,35 @@ afterEach(() => {
 })
 
 describe('managed desktop updates', () => {
+  it('explains an unpublished update feed without exposing HTTP diagnostics or claiming up to date', async () => {
+    const { service, updater, snapshots } = managed()
+    const error = Object.assign(new Error('Cannot find latest.yml: HttpError: 404\nPlease double check your authentication token.\nHeaders: secret diagnostics\n at local/file.js'), {
+      code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'
+    })
+    updater.checkForUpdates.mockImplementationOnce(async () => { updater.emit('error', error); throw error })
+    const state = await service.check()
+    expect(state).toMatchObject({ status: 'error', downloaded: false, canDownload: false })
+    expect(state.checkedAt).toBeUndefined()
+    expect(state.error).toContain('does not include automatic-update files yet')
+    for (const snapshot of snapshots.filter((entry) => entry.status === 'error')) {
+      expect(snapshot.error).toBe(state.error)
+      expect(snapshot.error).not.toMatch(/token|Headers|local\/file/)
+    }
+  })
+
+  it('keeps unexpected HTTP dumps out of the error message', async () => {
+    const { service, updater } = managed()
+    updater.checkForUpdates.mockRejectedValueOnce(new Error('HttpError: 503\nHeaders: internal details\n at local/file.js'))
+    expect((await service.check()).error).toBe('The update request failed. Please try again later.')
+  })
+
+  it('explains integrity failures while retaining a download retry', async () => {
+    const { service, updater } = managed()
+    await service.check()
+    updater.downloadUpdate.mockRejectedValueOnce(Object.assign(new Error('expected hash versus actual hash'), { code: 'ERR_CHECKSUM_MISMATCH' }))
+    expect(await service.download()).toMatchObject({ status: 'error', downloaded: false, canDownload: true, error: 'The downloaded update failed its integrity check. Please retry the download.' })
+  })
+
   it('disables implicit install, prereleases, downgrades and web installers', () => {
     const { updater, service } = managed()
     expect(service.getState()).toMatchObject({ managed: true, downloaded: false, currentVersion: '1.8.0' })
