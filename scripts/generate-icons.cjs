@@ -1,4 +1,4 @@
-// Rebuild desktop icon assets from the same pixel mark used by the app bar.
+// Rebuild desktop icon assets from the same vector mark used by the app bar.
 // Uses the existing Electron dependency; no external graphics tools required.
 const fs = require('node:fs')
 const os = require('node:os')
@@ -32,7 +32,7 @@ if (process.argv[2] !== '--render') {
     const artwork = mark.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="1024" height="1024">
   <rect width="20" height="20" rx="4" fill="#171511"/>
-  <g transform="translate(2 2)" fill="#e2a445" shape-rendering="crispEdges">
+  <g transform="translate(2 2)" fill="#e2a445">
 ${artwork.trim()}
   </g>
 </svg>
