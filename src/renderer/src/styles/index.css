@@ -1902,7 +1902,6 @@ body {
 .sidebar-update-copy { display: grid; gap: 2px; min-width: 0; }
 .sidebar-update-label { font-size: 12px; font-weight: 600; }
 .sidebar-update-detail { color: var(--text-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.sidebar-update-hint { margin: 6px 0 0; }
 .sidebar-update .update-progress { display: block; margin: 8px 0 0; }
 .sidebar-update .update-error { margin: 6px 0 0; }
 
