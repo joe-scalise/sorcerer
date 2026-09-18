@@ -5,6 +5,8 @@ import { subscribeToUpdates, useUpdateStore } from '../stores/useUpdateStore'
 import type { UpdateState } from '../../../shared/update'
 import { renderMarkdown } from '../utils/renderMarkdown'
 
+const LATEST_RELEASE_URL = 'https://github.com/joe-scalise/sorcerer/releases/latest'
+
 export function updateStatusText(state: UpdateState | null): string {
   if (!state) return 'Ready to check for updates'
   if (state.status === 'installing') return 'Preparing to restart…'
@@ -26,7 +28,7 @@ export function UpdateActions() {
   const busy = state && ['checking', 'downloading', 'installing'].includes(state.status)
   return <>
     {!state?.downloaded && <DialogButton disabled={!!busy} onClick={() => { void run('check') }}>{state?.status === 'error' ? 'Retry check' : 'Check now'}</DialogButton>}
-    {state?.url && <DialogButton onClick={() => openRelease(state.url)}>View release</DialogButton>}
+    <DialogButton onClick={() => openRelease(state?.url || LATEST_RELEASE_URL)}>View release</DialogButton>
     {state?.downloaded && <DialogButton variant="primary" disabled={!!busy} onClick={() => { void run('install') }}>Restart and install</DialogButton>}
     {state?.canDownload && <DialogButton variant="primary" disabled={!!busy} onClick={() => { void run('download') }}>{state.status === 'downloading' ? 'Downloading…' : state.status === 'error' ? 'Retry download' : 'Download update'}</DialogButton>}
     {state?.version && !state.managed && state.url && <DialogButton variant="primary" onClick={() => openRelease(state.url)}>Download from GitHub</DialogButton>}
@@ -49,7 +51,7 @@ export function Updates() {
   useEffect(subscribeToUpdates, [])
   if (!window.sorcerer) return null
   const visible = !!state && (!!state.version || state.status === 'error')
-  const label = state?.downloaded ? 'Update ready' : state?.status === 'downloading'
+  const label = state?.downloaded ? `Update ready · ${state.version}` : state?.status === 'downloading'
     ? `Downloading update · ${Math.round(state.progress || 0)}%`
     : state?.version ? `Update available · ${state.version}` : 'Update check failed'
   return <>
