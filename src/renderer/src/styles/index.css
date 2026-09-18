@@ -216,34 +216,11 @@ body {
 }
 
 .titlebar-logo {
-  width: 18px;
-  height: 18px;
-  position: relative;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
-}
-
-.titlebar-logo::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 11px;
-  height: 11px;
   background: var(--accent);
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 2px;
-}
-
-.titlebar-logo::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 5px;
-  height: 5px;
-  background: var(--bg-titlebar);
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 1px;
+  mask: url('../../../../build/mark.svg') center / contain no-repeat;
 }
 
 .titlebar-text {
