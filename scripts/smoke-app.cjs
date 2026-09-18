@@ -22,6 +22,7 @@ if (process.argv[2] !== '--child') {
         env, windowsHide: true, stdio: 'inherit', timeout: 60000
       })
       if (result.error || result.status !== 0) throw result.error || new Error(`App smoke ${phase} exited ${result.status}`)
+      if (!fs.existsSync(path.join(profile, `smoke-${phase}.ok`))) throw new Error(`App exited before completing the ${phase} smoke check`)
     }
     console.log('Application smoke passed: renderer/preload boot, database IPC, saved notes across restart, clean shutdown')
   } catch (error) {
@@ -81,6 +82,7 @@ if (process.argv[2] !== '--child') {
           fs.writeFileSync(output, screenshot.toPNG())
         }
         completed = true
+        fs.writeFileSync(path.join(profile, `smoke-${phase}.ok`), 'passed')
         console.log(`Application smoke ${phase} passed`)
         app.quit()
       } catch (error) {
