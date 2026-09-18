@@ -5,8 +5,10 @@ import { PopoutApp } from './PopoutApp'
 import { isPopout } from './popout'
 import { getThemeById, applyTheme } from './themes'
 import './styles/index.css'
+import { registerUpdatePreparation } from './prepareUpdate'
 
 async function boot() {
+  registerUpdatePreparation()
   // In a browser (no Electron preload), initialise the remote API client
   // using the token from the URL query string (?token=...).
   if (!window.sorcerer) {

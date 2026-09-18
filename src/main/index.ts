@@ -8,7 +8,10 @@ import { DatabaseService } from './services/database-service'
 import { WorktreeService } from './services/worktree-service'
 import { FileWatcherService } from './services/file-watcher-service'
 import { PopoutService } from './services/popout-service'
-import { registerIPC } from './ipc/handlers'
+import { registerIPC, getGlobalApiServer } from './ipc/handlers'
+import { UpdateService } from './services/update-service'
+import { flushUpdateDrafts } from './services/update-restart'
+import { waitForUpdateTasks } from './services/wait-for-update-tasks'
 import { syncWorktrees, checkResumeFailed, canRecoverSessionByCwd, persistCodexSessionIdentity, markSessionResumeState, reconcileCodexSessions, persistSessionExitSummary, resolveSessionWorkingDirectory, resolveCodexExitThreadIdentity, extractCodexThreadIdFromOutput, codexThreadBelongsToCwd } from './ipc/shared-handlers'
 import { AgentOrchestrator } from './services/agent-orchestrator'
 import { refreshProviders as refreshProviderRegistry } from './services/provider-registry'
@@ -64,6 +67,41 @@ let rateLimitsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const pendingExitPersistence = new Set<Promise<void>>()
 const pendingStartupTasks = new Set<Promise<void>>()
 let isShuttingDown = false
+let updateService: UpdateService | null = null
+let preparingUpdate = false
+let resumeRemoteAfterUpdateFailure = false
+let updatePersistenceError: unknown
+
+async function prepareUpdateInstall(): Promise<void> {
+  preparingUpdate = true
+  updatePersistenceError = undefined
+  agentOrchestrator?.stop()
+  ptyService.setSpawnsBlocked(true)
+  await flushUpdateDrafts(BrowserWindow.getAllWindows())
+  isShuttingDown = true
+  const server = getGlobalApiServer()
+  resumeRemoteAfterUpdateFailure = server?.isRunning() ?? false
+  server?.stop()
+  await waitForUpdateTasks(pendingStartupTasks)
+  getGlobalApiServer()?.stop()
+  await ptyService.killAllAndWaitStrict()
+  await waitForUpdateTasks(pendingExitPersistence)
+  if (updatePersistenceError) throw new Error('Session state could not be saved. Please retry before installing the update.')
+  flushWindowBounds()
+  // Keep the database usable if the installer cannot launch.
+  dbService.flush()
+}
+
+function resumeAfterUpdateFailure(): void {
+  preparingUpdate = false
+  isShuttingDown = false
+  ptyService.setSpawnsBlocked(false)
+  agentOrchestrator?.start()
+  if (resumeRemoteAfterUpdateFailure) {
+    void getGlobalApiServer()?.start().catch((error) => console.error('[updates] Could not resume remote access:', error))
+  }
+  resumeRemoteAfterUpdateFailure = false
+}
 
 function collectPopoutEntities(panelIds: string[]): { sessions: any[]; agents: any[]; projects: any[] } {
   const sessions = new Map<string, any>()
@@ -278,7 +316,20 @@ async function createWindow(): Promise<void> {
   }
 
   // Register IPC handlers
-  registerIPC(ptyService, dbService, worktreeService, fileWatcherService)
+  if (!updateService) {
+    updateService = new UpdateService({
+      getSetting: (key) => dbService.getSetting(key),
+      broadcast: (state) => {
+        if (preparingUpdate && state.status !== 'installing') resumeAfterUpdateFailure()
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('system:updates:state', state)
+        }
+      }
+    })
+    updateService.setBeforeInstall(prepareUpdateInstall)
+    updateService.start()
+  }
+  registerIPC(ptyService, dbService, worktreeService, fileWatcherService, updateService)
 
   // Start the agent orchestrator — handles scheduled runs, output capture, decisions
   if (!agentOrchestrator) {
@@ -331,6 +382,7 @@ async function createWindow(): Promise<void> {
       }
     } catch (err) {
       console.error(`[pty-exit] ${sessionId}: failed to persist exit state`, err)
+      if (preparingUpdate) updatePersistenceError = err
       return
     }
 
@@ -355,6 +407,7 @@ async function createWindow(): Promise<void> {
         }
       })().catch((err) => {
         console.error(`[codex-thread] ${sessionId}: failed to persist exit identity`, err)
+        if (preparingUpdate) updatePersistenceError = err
       })
       trackExitPersistence(persistenceTask)
     }
@@ -647,6 +700,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isShuttingDown = true
+  updateService?.stop()
 })
 
 app.on('window-all-closed', () => {
@@ -726,6 +780,7 @@ ipcMain.on('window:setTitleBarOverlay', (_e, options: { color: string; symbolCol
 
 // ── Pop-out window IPC ──────────────────────────────────────
 ipcMain.handle('popout:open', (_e, panelType: string, panelId: string, entityName: string) => {
+  if (preparingUpdate) throw new Error('Sorcerer is preparing to install an update.')
   const themeId = dbService?.getSetting('theme') || 'default'
 
   // Look up project name and branch for the popout header

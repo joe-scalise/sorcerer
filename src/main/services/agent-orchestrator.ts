@@ -31,6 +31,9 @@ export class AgentOrchestrator {
   private pty: PTYService
   private mainWindow: BrowserWindow | null
   private pollInterval: ReturnType<typeof setInterval> | null = null
+  private initialCheckTimer: ReturnType<typeof setTimeout> | null = null
+  private missionInputTimers = new Set<ReturnType<typeof setTimeout>>()
+  private exitListenerRegistered = false
   private runningAgents = new Map<string, RunningAgent>()
 
   constructor(
@@ -51,27 +54,45 @@ export class AgentOrchestrator {
     console.log('[orchestrator] Started')
 
     // Initial check after 5 seconds (let app finish loading)
-    setTimeout(() => this.checkSchedule(), 5000)
+    this.initialCheckTimer = setTimeout(() => {
+      this.initialCheckTimer = null
+      this.checkSchedule()
+    }, 5000)
 
     // Then poll every 30 seconds
     this.pollInterval = setInterval(() => this.checkSchedule(), 30_000)
 
-    // Listen for agent exits to capture output
-    this.pty.onExit((sessionId, exitCode) => {
-      const running = this.runningAgents.get(sessionId)
-      if (!running) return
-      this.handleRunComplete(sessionId, exitCode, running.startedAt).catch((err) => {
-        console.error(`[orchestrator] Failed to complete agent run ${sessionId}:`, err)
-        this.runningAgents.delete(sessionId)
+    // Keep one subscription across stop/resume. It must remain active while
+    // stopped so update shutdown can still persist already-running agents.
+    if (!this.exitListenerRegistered) {
+      this.exitListenerRegistered = true
+      this.pty.onExit((sessionId, exitCode) => {
+        const running = this.runningAgents.get(sessionId)
+        if (!running) return
+        try {
+          this.handleRunComplete(sessionId, exitCode, running.startedAt)
+        } catch (err) {
+          console.error(`[orchestrator] Failed to complete agent run ${sessionId}:`, err)
+          this.runningAgents.delete(sessionId)
+          // PTYService collects listener errors so update shutdown cannot
+          // report success when the completed run was not persisted.
+          throw err
+        }
       })
-    })
+    }
   }
 
   stop(): void {
+    if (this.initialCheckTimer) {
+      clearTimeout(this.initialCheckTimer)
+      this.initialCheckTimer = null
+    }
     if (this.pollInterval) {
       clearInterval(this.pollInterval)
       this.pollInterval = null
     }
+    for (const timer of this.missionInputTimers) clearTimeout(timer)
+    this.missionInputTimers.clear()
     console.log('[orchestrator] Stopped')
   }
 
@@ -79,6 +100,7 @@ export class AgentOrchestrator {
    * Check which agents are due to run based on their schedule.
    */
   private checkSchedule(): void {
+    if (!this.pollInterval) return
     const agents = this.db.listAgents()
     const now = Math.floor(Date.now() / 1000)
 
@@ -105,6 +127,7 @@ export class AgentOrchestrator {
    * Execute an agent's mission.
    */
   private runAgent(agent: any): void {
+    if (!this.pollInterval) return
     const agentId = agent.id as string
     const cwd = path.join(os.homedir(), '.sorcerer', 'agents', agentId)
     fs.mkdirSync(cwd, { recursive: true })
@@ -127,7 +150,8 @@ export class AgentOrchestrator {
     })
 
     const startedAt = Math.floor(Date.now() / 1000)
-    this.runningAgents.set(agentId, { agentId, startedAt })
+    const running = { agentId, startedAt }
+    this.runningAgents.set(agentId, running)
 
     console.log(`[orchestrator] Running agent: ${agent.name} (provider: ${providerId}, ${hasHistory ? 'continue' : 'fresh'})`)
 
@@ -148,18 +172,20 @@ export class AgentOrchestrator {
 
     // If continuing with Claude, send the mission as input after Claude loads
     if (hasHistory && providerId === 'claude') {
-      setTimeout(() => {
-        if (this.pty.isRunning(agentId)) {
+      const timer = setTimeout(() => {
+        this.missionInputTimers.delete(timer)
+        if (this.pollInterval && this.runningAgents.get(agentId) === running && this.pty.isRunning(agentId)) {
           this.pty.write(agentId, agent.mission + '\n')
         }
       }, 5000)
+      this.missionInputTimers.add(timer)
     }
   }
 
   /**
    * Handle an agent run completing — capture output, analyze, decide, act.
    */
-  private async handleRunComplete(agentId: string, exitCode: number, startedAt: number): Promise<void> {
+  private handleRunComplete(agentId: string, exitCode: number, startedAt: number): void {
     const completedAt = Math.floor(Date.now() / 1000)
     const durationMs = (completedAt - startedAt) * 1000
 

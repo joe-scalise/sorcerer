@@ -30,7 +30,7 @@ async function run() {
   const appRoot = path.resolve(process.argv[3])
   const appRequire = createRequire(path.join(appRoot, 'package.json'))
   if (appRoot.endsWith('.asar')) {
-    for (const name of ['node-pty', 'sql.js']) {
+    for (const name of ['node-pty', 'sql.js', 'electron-updater']) {
       const resolved = appRequire.resolve(name)
       if (!resolved.startsWith(`${appRoot}${path.sep}`) && !resolved.startsWith(`${appRoot}.unpacked${path.sep}`)) {
         throw new Error(`Packaged dependency ${name} resolved outside the application: ${resolved}`)

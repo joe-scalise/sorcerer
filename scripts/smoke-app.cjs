@@ -9,7 +9,7 @@ if (process.argv[2] !== '--child') {
   const packaged = process.platform === 'darwin'
     ? `dist/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Sorcerer.app/Contents/Resources/app.asar`
     : `dist/${process.platform === 'win32' ? 'win' : 'linux'}-unpacked/resources/app.asar`
-  let appRoot = path.resolve(process.argv[2] === '--packaged' ? packaged : process.cwd())
+  let appRoot = path.resolve(process.argv[2] === '--packaged' ? packaged : process.argv[2] || process.cwd())
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sorcerer-app-smoke-'))
   const env = { ...process.env, HOME: profile, USERPROFILE: profile, APPDATA: path.join(profile, 'appdata'), LOCALAPPDATA: path.join(profile, 'localappdata') }
   delete env.ELECTRON_RUN_AS_NODE

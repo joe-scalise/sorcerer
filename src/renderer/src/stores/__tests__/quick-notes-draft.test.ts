@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), delete: vi.fn() }))
 vi.mock('../../api/client', () => ({ getApi: () => ({ quickNotes: api }) }))
-import { noteKey, useQuickNotesDraftStore } from '../useQuickNotesDraftStore'
+import { flushAllNoteDrafts, noteKey, useQuickNotesDraftStore } from '../useQuickNotesDraftStore'
 import { useQuickNotesStore } from '../useQuickNotesStore'
 
 const store = () => useQuickNotesDraftStore.getState()
@@ -23,6 +23,15 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 
 describe('quick note draft persistence', () => {
+  it('blocks installation when flushing a draft fails, then permits a successful retry', async () => {
+    await load()
+    update('do not lose this')
+    api.save.mockRejectedValueOnce(new Error('Disk full'))
+    await expect(flushAllNoteDrafts()).rejects.toThrow('could not be saved')
+    expect(draft().content).toBe('do not lose this')
+    await expect(flushAllNoteDrafts()).resolves.toBeUndefined()
+    expect(draft().dirty).toBe(false)
+  })
   it('flushes the latest edits immediately when the editor closes before debounce', async () => {
     await load()
     update('first')

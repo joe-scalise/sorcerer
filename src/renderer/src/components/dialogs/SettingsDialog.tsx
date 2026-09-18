@@ -13,6 +13,7 @@ import { Tooltip } from '../Tooltip'
 import { DialogSelect } from '../DialogSelect'
 import { useProviders } from '../../hooks/useProviders'
 import { useDialogFocus } from '../../hooks/useDialogFocus'
+import { UpdateActions, UpdateSummary } from '../Updates'
 
 type SettingsTab = 'profile' | 'appearance' | 'sessions' | 'providers' | 'git' | 'remote' | 'briefing' | 'general' | 'keybindings'
 
@@ -923,18 +924,10 @@ function RemoteTab() {
   )
 }
 
-function useUpdateCheck() {
-  const [update, setUpdate] = useState<{ version: string; url: string } | null>(null)
-  useEffect(() => {
-    getApi().system.checkUpdate?.()?.then((u: any) => setUpdate(u)).catch(() => {})
-  }, [])
-  return update
-}
-
 function GeneralTab() {
   const [checkUpdates, setCheckUpdates] = useSetting('checkForUpdates', 'true')
+  const [autoDownload, setAutoDownload] = useSetting('autoDownloadUpdates', 'true')
   const { showFeedbackIcon, setShowFeedbackIcon, resetSidebarLayout } = useUIStore()
-  const update = useUpdateCheck()
 
   return (
     <>
@@ -942,20 +935,18 @@ function GeneralTab() {
       <SettingRow label="Version" description="Sorcerer">
         <span className="settings-version">{__APP_VERSION__}</span>
       </SettingRow>
-      <SettingRow label="Check for updates" description="Periodically check GitHub for new releases">
+      {isElectron ? <>
+      <SettingRow label="Check for updates" description="Check at startup and every two hours">
         <Toggle checked={checkUpdates !== 'false'} onChange={(v) => setCheckUpdates(v ? 'true' : 'false')} label="Check for updates" />
       </SettingRow>
-      {update && (
-        <SettingRow label="Update available" description={`Version ${update.version} is available`}>
-          <button
-            className="settings-action-btn"
-            type="button"
-            onClick={() => window.open(update.url, '_blank')}
-          >
-            Download
-          </button>
-        </SettingRow>
-      )}
+      <SettingRow label="Download updates automatically" description="Download in the background where supported. You choose when to restart and install.">
+        <Toggle checked={autoDownload !== 'false'} onChange={(v) => setAutoDownload(v ? 'true' : 'false')} label="Download updates automatically" />
+      </SettingRow>
+      <div className="settings-update-panel">
+        <UpdateSummary />
+        <div className="update-actions"><UpdateActions /></div>
+      </div>
+      </> : <p className="update-caption">Manage desktop updates from Sorcerer on your computer.</p>}
 
       <SectionTitle>Interface</SectionTitle>
       <SettingRow label="Show feedback button" description="Display the Give feedback shortcut in the sidebar footer">

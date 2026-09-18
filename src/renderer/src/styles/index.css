@@ -1889,6 +1889,9 @@ body {
 }
 
 .titlebar-update {
+  background: transparent;
+  border: 0;
+  font-family: inherit;
   position: relative;
   z-index: 1;
   -webkit-app-region: no-drag;
@@ -2028,6 +2031,23 @@ body {
   opacity: 0.3;
   transition: background 0.15s, opacity 0.15s;
 }
+
+.titlebar-update:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.update-version-line { display: flex; justify-content: space-between; color: var(--text-secondary); margin-bottom: 16px; }
+.update-version-line strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.update-status { color: var(--text-primary); font-size: 14px; margin: 0 0 8px; }
+.update-caption { color: var(--text-secondary); font-size: 12px; line-height: 1.6; margin: 8px 0; }
+.update-error { color: var(--danger, #f28b82); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.update-progress { width: 100%; height: 6px; accent-color: var(--accent); margin: 8px 0; }
+.update-notes { margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 14px; }
+.update-notes summary { color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.update-notes-body { overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; color: var(--text-secondary); font-size: 12px; line-height: 1.7; margin-top: 12px; }
+.update-notes-body h1, .update-notes-body h2, .update-notes-body h3 { font-size: 13px; color: var(--text-primary); margin: 12px 0 6px; }
+.update-notes-body ul { padding-left: 20px; }
+.update-notes-body a { color: var(--accent); }
+.update-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.settings-update-panel { padding: 16px 0 20px; }
+.update-preparing-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: var(--scrim-heavy); color: var(--text-primary); font-size: 14px; -webkit-app-region: no-drag; }
 
 /* Collapsed action bar */
 .action-bar--collapsed {
