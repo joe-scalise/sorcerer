@@ -1343,11 +1343,16 @@ export function ProjectTree() {
       <>
         <div className="section-header stagger-4">
           <span className="section-label">Projects</span>
-          <span className="section-count">0</span>
+          <div className="section-header__actions">
+            <span className="section-count">0</span>
+            <button className="section-add-btn" onClick={() => openDialog('add-project')} aria-label="Add project" title="Add project">
+              <PlusIcon />
+            </button>
+          </div>
         </div>
         <div className="empty-state">
           <p className="empty-state-title">No results</p>
-          <p className="empty-state-text">No sessions match "{searchQuery}"</p>
+          <p className="empty-state-text">No projects or sessions match "{searchQuery}"</p>
         </div>
       </>
     )
@@ -1395,7 +1400,7 @@ export function ProjectTree() {
           <button className="section-add-btn" onClick={handleCreateGroup} title="New group">
             <FolderPlusIcon />
           </button>
-          <button className="section-add-btn" onClick={(e) => { e.stopPropagation(); openDialog('add-project') }} title="Add project">
+          <button className="section-add-btn" onClick={(e) => { e.stopPropagation(); openDialog('add-project') }} aria-label="Add project" title="Add project">
             <PlusIcon />
           </button>
         </div>

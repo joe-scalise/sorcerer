@@ -8,13 +8,14 @@ import { OrphanWorkspaceBanner } from '../OrphanWorkspaceBanner'
 const mocks = vi.hoisted(() => ({
   features: { standaloneAgents: false },
   openDialog: vi.fn(),
+  openSearch: vi.fn(),
   scanOrphans: vi.fn(),
   scanOrphanAgents: vi.fn(),
   load: vi.fn(),
   addToast: vi.fn()
 }))
 vi.mock('../../features', () => ({ getFeatures: () => mocks.features }))
-vi.mock('../../stores/useUIStore', () => ({ useUIStore: () => ({ openDialog: mocks.openDialog }) }))
+vi.mock('../../stores/useUIStore', () => ({ useUIStore: () => ({ openDialog: mocks.openDialog, openSearch: mocks.openSearch }) }))
 vi.mock('../../stores/useProjectStore', () => ({ useProjectStore: (select: any) => select({ loadProjects: mocks.load }) }))
 vi.mock('../../stores/useSessionStore', () => ({ useSessionStore: (select: any) => select({ loadSessions: mocks.load }) }))
 vi.mock('../../stores/useAgentStore', () => ({ useAgentStore: (select: any) => select({ loadAgents: mocks.load }) }))
@@ -42,12 +43,14 @@ describe('standalone Agent entry points', () => {
   it.each([false, true])('keeps project/session creation and gates Agent creation (collapsed=%s)', async (collapsed) => {
     await act(async () => root.render(<ActionBar collapsed={collapsed} />))
     expect(host.querySelector('[title="New Agent"]')).toBeNull()
-    const buttons = host.querySelectorAll<HTMLButtonElement>('button')
-    expect(buttons).toHaveLength(2)
-    await act(async () => buttons[0].click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New session"]')!.click())
     expect(mocks.openDialog).toHaveBeenLastCalledWith('new-session')
-    await act(async () => buttons[1].click())
-    expect(mocks.openDialog).toHaveBeenLastCalledWith('add-project')
+    if (collapsed) {
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Add project"]')!.click())
+      expect(mocks.openDialog).toHaveBeenLastCalledWith('add-project')
+    }
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Search"]')!.click())
+    expect(mocks.openSearch).toHaveBeenCalledOnce()
 
     mocks.features.standaloneAgents = true
     await act(async () => root.render(<ActionBar collapsed={collapsed} />))
