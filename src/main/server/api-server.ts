@@ -1,3 +1,4 @@
+import { FeatureDisabledError, getFeatureFlags, requireStandaloneAgents } from '../services/features'
 import http from 'http'
 import crypto from 'crypto'
 import fs from 'fs'
@@ -389,14 +390,15 @@ export class ApiServer {
       'project-group:reorder': (groupIds: string[]) => s.db.reorderProjectGroups(groupIds),
 
       // Agent groups
-      'agent-group:list': () => s.db.listAgentGroups(),
+      'agent-group:list': () => getFeatureFlags(s.db).standaloneAgents ? s.db.listAgentGroups() : [],
       'agent-group:add': (name: string) => {
+        requireStandaloneAgents(s.db)
         const { v4: uuidv4 } = require('uuid')
         return s.db.addAgentGroup(uuidv4(), name)
       },
-      'agent-group:update': (id: string, updates: { name?: string }) => s.db.updateAgentGroup(id, updates),
-      'agent-group:remove': (id: string) => s.db.removeAgentGroup(id),
-      'agent-group:reorder': (groupIds: string[]) => s.db.reorderAgentGroups(groupIds),
+      'agent-group:update': (id: string, updates: { name?: string }) => { requireStandaloneAgents(s.db); return s.db.updateAgentGroup(id, updates) },
+      'agent-group:remove': (id: string) => { requireStandaloneAgents(s.db); return s.db.removeAgentGroup(id) },
+      'agent-group:reorder': (groupIds: string[]) => { requireStandaloneAgents(s.db); return s.db.reorderAgentGroups(groupIds) },
 
       // Session
       'session:list': (projectId?: string) => listSessions(s, projectId),
@@ -444,6 +446,7 @@ export class ApiServer {
       'agent:remove': (id: string) => removeAgent(s, id),
       'agent:start': (id: string) => startAgent(s, id),
       'agent:has-conversation': (agentId: string) => {
+        if (!getFeatureFlags(s.db).standaloneAgents) return false
         const cwd = path.join(os.homedir(), '.sorcerer', 'agents', agentId)
         if (!fs.existsSync(cwd)) return false
         return hasClaudeConversation(cwd)
@@ -486,6 +489,7 @@ export class ApiServer {
       'provider:refresh': () => refreshProviders(s),
 
       // System
+      'system:features': () => getFeatureFlags(s.db),
       'system:userInfo': () => getUserInfo(),
       'system:remoteSessionIds': () => this.wsHandler?.getRemoteSessionIds() ?? []
     }
@@ -718,6 +722,10 @@ export class ApiServer {
   }
 
   private handleRequestError(res: http.ServerResponse, err: unknown): void {
+    if (err instanceof FeatureDisabledError) {
+      this.sendError(res, 403, 'feature_disabled', err.message)
+      return
+    }
     if (err instanceof HttpRequestError || err instanceof MobileAuthError) {
       this.sendError(res, err.statusCode, err.code, err.message)
       return

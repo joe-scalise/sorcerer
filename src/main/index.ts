@@ -1,3 +1,5 @@
+import { getFeatureFlags, requireStandaloneAgents } from './services/features'
+import type { FeatureFlags } from '../shared/features'
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -61,6 +63,7 @@ let worktreeService: WorktreeService
 let fileWatcherService: FileWatcherService
 let popoutService: PopoutService
 let agentOrchestrator: AgentOrchestrator | null = null
+let processFeatureFlags: Readonly<FeatureFlags> | undefined
 let saveWindowBoundsTimer: NodeJS.Timeout | null = null
 let rateLimitsWatcher: fs.FSWatcher | null = null
 let rateLimitsDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -96,11 +99,17 @@ function resumeAfterUpdateFailure(): void {
   preparingUpdate = false
   isShuttingDown = false
   ptyService.setSpawnsBlocked(false)
-  agentOrchestrator?.start()
+  if (dbService && getFeatureFlags(dbService).standaloneAgents) agentOrchestrator?.start()
   if (resumeRemoteAfterUpdateFailure) {
     void getGlobalApiServer()?.start().catch((error) => console.error('[updates] Could not resume remote access:', error))
   }
   resumeRemoteAfterUpdateFailure = false
+}
+
+function requireEnabledPanel(panelId: string): void {
+  if (dbService && (panelId.startsWith('quicknotes:agent:') || dbService.getAgent(panelId))) {
+    requireStandaloneAgents(dbService)
+  }
 }
 
 function collectPopoutEntities(panelIds: string[]): { sessions: any[]; agents: any[]; projects: any[] } {
@@ -123,7 +132,8 @@ function collectPopoutEntities(panelIds: string[]): { sessions: any[]; agents: a
   }
 
   const addAgent = (agentId: string) => {
-    const agent = dbService?.getAgent(agentId)
+    if (!dbService || !getFeatureFlags(dbService).standaloneAgents) return false
+    const agent = dbService.getAgent(agentId)
     if (!agent) return false
     agents.set(agent.id as string, agent)
     return true
@@ -241,6 +251,7 @@ async function createWindow(): Promise<void> {
   // Initialize database first so we can read window bounds
   dbService = new DatabaseService()
   await dbService.ensureReady()
+  processFeatureFlags = getFeatureFlags(dbService, processFeatureFlags)
 
   const bounds = getWindowBounds()
 
@@ -332,7 +343,7 @@ async function createWindow(): Promise<void> {
   registerIPC(ptyService, dbService, worktreeService, fileWatcherService, updateService)
 
   // Start the agent orchestrator — handles scheduled runs, output capture, decisions
-  if (!agentOrchestrator) {
+  if (getFeatureFlags(dbService).standaloneAgents && !agentOrchestrator) {
     agentOrchestrator = new AgentOrchestrator(dbService, ptyService, mainWindow)
     agentOrchestrator.start()
   }
@@ -552,7 +563,7 @@ async function createWindow(): Promise<void> {
 
       // Auto-start agents configured for auto_start (immediate, outside of schedule)
       try {
-        const autoStartAgents = dbService.listAgents().filter((a: any) => a.auto_start === 1 && a.mission)
+        const autoStartAgents = (getFeatureFlags(dbService).standaloneAgents ? dbService.listAgents() : []).filter((a: any) => a.auto_start === 1 && a.mission)
         if (autoStartAgents.length > 0) {
           for (const agent of autoStartAgents) {
             try {
@@ -781,6 +792,7 @@ ipcMain.on('window:setTitleBarOverlay', (_e, options: { color: string; symbolCol
 // ── Pop-out window IPC ──────────────────────────────────────
 ipcMain.handle('popout:open', (_e, panelType: string, panelId: string, entityName: string) => {
   if (preparingUpdate) throw new Error('Sorcerer is preparing to install an update.')
+  requireEnabledPanel(panelId)
   const themeId = dbService?.getSetting('theme') || 'default'
 
   // Look up project name and branch for the popout header
@@ -849,6 +861,7 @@ ipcMain.on('popout:broadcastTheme', (_e, themeId: string) => {
 })
 
 ipcMain.handle('popout:syncPanels', (e, windowId: string, panelIds: string[]) => {
+  panelIds.forEach(requireEnabledPanel)
   const diff = popoutService.updatePanels(windowId, panelIds)
   const win = popoutService.getWindowByWebContentsId(e.sender.id)
   if (!win) return diff
@@ -872,5 +885,6 @@ ipcMain.handle('popout:setSelectionTargetReady', (_e, windowId: string, ready: b
 })
 
 ipcMain.handle('popout:assignToSelectionTarget', (_e, panelId: string) => {
+  requireEnabledPanel(panelId)
   return popoutService.assignToSelectionTarget(panelId)
 })

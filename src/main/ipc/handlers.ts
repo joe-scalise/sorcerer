@@ -1,3 +1,4 @@
+import { getFeatureFlags, requireStandaloneAgents } from '../services/features'
 import { ipcMain, dialog, shell, app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import os from 'os'
@@ -117,6 +118,9 @@ export function registerIPC(
     fileWatcher: fileWatcherService
   }
 
+  getFeatureFlags(dbService)
+  ipcMain.handle('system:features', () => getFeatureFlags(dbService))
+
   // ── Project operations ──────────────────────────────────────
 
   ipcMain.handle('project:list', () => {
@@ -232,6 +236,7 @@ export function registerIPC(
   // ── Agent orphan detection ──────────────────────────────────
 
   ipcMain.handle('workspace:scan-orphan-agents', () => {
+    if (!getFeatureFlags(dbService).standaloneAgents) return []
     const agentsRoot = path.join(os.homedir(), '.sorcerer', 'agents')
     if (!fs.existsSync(agentsRoot)) return []
 
@@ -286,6 +291,7 @@ export function registerIPC(
   })
 
   ipcMain.handle('workspace:dismiss-orphan-agent', (_event, dirName: string) => {
+    requireStandaloneAgents(dbService)
     const raw = dbService.getSetting('dismissedAgents')
     const list: string[] = raw ? JSON.parse(raw) : []
     if (!list.includes(dirName)) {
@@ -303,6 +309,7 @@ export function registerIPC(
   })
 
   ipcMain.handle('workspace:delete-orphan-agent', (_event, dirName: string) => {
+    requireStandaloneAgents(dbService)
     const agentsRoot = path.join(os.homedir(), '.sorcerer', 'agents')
     const dirPath = path.join(agentsRoot, dirName)
     // Safety: only delete if it's actually inside the agents root
@@ -589,23 +596,28 @@ export function registerIPC(
   // ── Agent group operations ──────────────────────────────────
 
   ipcMain.handle('agent-group:list', () => {
+    if (!getFeatureFlags(dbService).standaloneAgents) return []
     return dbService.listAgentGroups()
   })
 
   ipcMain.handle('agent-group:add', (_event, name: string) => {
+    requireStandaloneAgents(dbService)
     const id = uuidv4()
     return dbService.addAgentGroup(id, name)
   })
 
   ipcMain.handle('agent-group:update', (_event, id: string, updates: { name?: string }) => {
+    requireStandaloneAgents(dbService)
     return dbService.updateAgentGroup(id, updates)
   })
 
   ipcMain.handle('agent-group:remove', (_event, id: string) => {
+    requireStandaloneAgents(dbService)
     dbService.removeAgentGroup(id)
   })
 
   ipcMain.handle('agent-group:reorder', (_event, groupIds: string[]) => {
+    requireStandaloneAgents(dbService)
     dbService.reorderAgentGroups(groupIds)
   })
 
@@ -641,6 +653,7 @@ export function registerIPC(
   })
 
   ipcMain.handle('agent:has-conversation', (_event, agentId: string) => {
+    if (!getFeatureFlags(dbService).standaloneAgents) return false
     const cwd = path.join(os.homedir(), '.sorcerer', 'agents', agentId)
     if (!fs.existsSync(cwd)) return false
     return hasClaudeConversation(cwd)
@@ -663,10 +676,12 @@ export function registerIPC(
   })
 
   ipcMain.handle('agent:list-runs', (_event, agentId: string, limit?: number) => {
+    if (!getFeatureFlags(dbService).standaloneAgents) return []
     return dbService.listAgentRuns(agentId, limit || 20)
   })
 
   ipcMain.handle('agent:latest-run', (_event, agentId: string) => {
+    if (!getFeatureFlags(dbService).standaloneAgents) return null
     return dbService.getLatestAgentRun(agentId)
   })
 

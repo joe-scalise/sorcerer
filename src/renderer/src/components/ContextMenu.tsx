@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { getApi } from '../api/client'
+import { getFeatures } from '../features'
 import { useUIStore, findLeaf, findLeafBySession } from '../stores/useUIStore'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useSessionStore } from '../stores/useSessionStore'
@@ -131,6 +132,11 @@ export function ContextMenu() {
   }, [contextMenu, closeContextMenu])
 
   if (!contextMenu) return null
+  if (!getFeatures().standaloneAgents && (
+    contextMenu.type === 'agent' || contextMenu.type === 'agents-header' || contextMenu.type === 'agent-group' ||
+    (contextMenu.type === 'quicknotes' && contextMenu.targetId.startsWith('quicknotes:agent:')) ||
+    (contextMenu.type === 'session' && sessions.some((session) => session.id === contextMenu.targetId && session.agentId))
+  )) return null
 
   const findProjectPath = (targetId: string): string => {
     const project = projects.find((p) => p.id === targetId)

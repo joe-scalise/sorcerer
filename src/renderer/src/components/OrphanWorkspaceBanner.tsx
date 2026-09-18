@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getApi } from '../api/client'
+import { getFeatures } from '../features'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useSessionStore } from '../stores/useSessionStore'
 import { useAgentStore } from '../stores/useAgentStore'
@@ -70,7 +71,7 @@ export function OrphanWorkspaceBanner() {
   useEffect(() => {
     Promise.all([
       getApi().workspace.scanOrphans(),
-      getApi().workspace.scanOrphanAgents()
+      getFeatures().standaloneAgents ? getApi().workspace.scanOrphanAgents() : Promise.resolve([])
     ]).then(([workspaces, agents]: [OrphanWorkspace[], OrphanAgent[]]) => {
       setOrphans(workspaces)
       setOrphanAgents(agents)

@@ -26,12 +26,14 @@ Requires a supported AI CLI tool installed and available on `PATH`, such as [Cla
 - **Project & worktree isolation** — Automatically create git worktrees so each session works in its own branch
 - **Split view** — View and interact with multiple sessions simultaneously
 - **Team awareness** — Monitor provider-specific integrations such as Claude Code teams and tasks
-- **Standalone sessions** — Launch quick agent sessions without a project
+- **Projects-first workspace** — Organize coding sessions and terminals around your projects
 - **Session recovery** — Resume previous sessions, detect orphaned worktrees, recover from crashes
 - **Quick Notes** — Per-session scratchpad that persists across restarts
 - **Remote access** — Built-in HTTP + WebSocket server with token auth for browser-based access
 - **Android companion** — Pair a sideloaded, device-scoped remote-control app over a trusted LAN or VPN
 - **Cross-platform** — Windows, macOS, and Linux
+
+Standalone **Agents** are an optional experimental feature, disabled by default. To use them, turn on **Settings → General → Experimental features → Enable standalone Agents**, then quit and reopen Sorcerer. Existing Agent definitions, notes, history, and schedules are preserved while disabled; enabling the feature resumes configured startup and scheduled runs. Coding-agent sessions and teams within Projects remain available.
 
 ## Permissions
 

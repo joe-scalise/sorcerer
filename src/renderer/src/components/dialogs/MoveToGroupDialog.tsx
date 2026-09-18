@@ -4,6 +4,7 @@ import { DialogSelect, type DialogSelectOption } from '../DialogSelect'
 import { useAgentStore } from '../../stores/useAgentStore'
 import { useProjectStore } from '../../stores/useProjectStore'
 import { useUIStore } from '../../stores/useUIStore'
+import { getFeatures } from '../../features'
 
 const NO_GROUP_VALUE = '__ungrouped__'
 
@@ -15,7 +16,7 @@ export function MoveToGroupDialog() {
 
   const mode = activeDialog === 'move-project-group'
     ? 'project'
-    : activeDialog === 'move-agent-group'
+    : activeDialog === 'move-agent-group' && getFeatures().standaloneAgents
       ? 'agent'
       : null
 

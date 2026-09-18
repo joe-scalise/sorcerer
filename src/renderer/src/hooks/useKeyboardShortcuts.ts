@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { getFeatures } from '../features'
 import { useUIStore } from '../stores/useUIStore'
 import { useSessionStore } from '../stores/useSessionStore'
 import { useAgentStore } from '../stores/useAgentStore'
@@ -66,7 +67,9 @@ function closeActivePanel(): boolean {
  * ungrouped agents → grouped agents → projects with their visible sessions.
  */
 function getNavigableIds(): string[] {
-  const { agents, groups } = useAgentStore.getState()
+  const { agents, groups } = getFeatures().standaloneAgents
+    ? useAgentStore.getState()
+    : { agents: [], groups: [] }
   const { projects } = useProjectStore.getState()
   const { sessions } = useSessionStore.getState()
   const { searchQuery, expandedGroups } = useUIStore.getState()
@@ -99,7 +102,7 @@ function getNavigableIds(): string[] {
     : projects
 
   for (const project of filteredProjects) {
-    const projectSessions = sessions.filter((s) => s.project_id === project.id && s.status !== 'deleted' && s.status !== 'archived')
+    const projectSessions = sessions.filter((s) => s.project_id === project.id && s.status !== 'deleted' && s.status !== 'archived' && (getFeatures().standaloneAgents || !s.agentId))
     projectSessions.forEach((s) => ids.push(s.id))
   }
 

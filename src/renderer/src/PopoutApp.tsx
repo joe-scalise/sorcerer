@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, type ReactElement } from 'rea
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { getApi } from './api/client'
+import { getFeatures } from './features'
 import { getAppliedTheme, getThemeById, applyTheme, toXtermTheme } from './themes'
 import { GitBranchIcon, TerminalIcon, BotIcon, NotesIcon, SplitHorizontalIcon, SplitVerticalIcon, MaximizeIcon, MinimizeIcon, EyeIcon } from './components/icons'
 import { PanelActionsMenu, type PanelActionMenuItem } from './components/PanelActionsMenu'
@@ -731,7 +732,7 @@ function PopoutWorkspace({ params }: { params: PopoutParams }) {
               <div className="terminal-placeholder">
                 <TerminalIcon className="terminal-placeholder-icon" />
                 <div className="terminal-placeholder-text">
-                  Click a session, agent, or notes entry in the sidebar to open it here
+                  {getFeatures().standaloneAgents ? 'Click a session, agent, or notes entry in the sidebar to open it here' : 'Click a session or notes entry in the sidebar to open it here'}
                 </div>
               </div>
             ) : (

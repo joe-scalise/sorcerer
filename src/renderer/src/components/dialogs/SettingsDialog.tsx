@@ -14,6 +14,8 @@ import { DialogSelect } from '../DialogSelect'
 import { useProviders } from '../../hooks/useProviders'
 import { useDialogFocus } from '../../hooks/useDialogFocus'
 import { UpdateActions, UpdateSummary } from '../Updates'
+import { getFeatures } from '../../features'
+import { STANDALONE_AGENTS_SETTING } from '../../../../shared/features'
 
 type SettingsTab = 'profile' | 'appearance' | 'sessions' | 'providers' | 'git' | 'remote' | 'briefing' | 'general' | 'keybindings'
 
@@ -46,7 +48,7 @@ const SHORTCUTS = [
   { keys: 'Ctrl + Shift + B', action: 'Toggle briefing panel' }
 ]
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
       className={`settings-toggle ${checked ? 'settings-toggle--on' : ''}`}
@@ -55,6 +57,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
     >
       <span className="settings-toggle-dot" />
     </button>
@@ -339,7 +342,7 @@ function SessionsTab() {
       </SettingRow>
 
       <SectionTitle>Sidebar</SectionTitle>
-      <SettingRow label="Show provider badges" description="Display the AI provider name next to sessions and agents using non-default providers">
+      <SettingRow label="Show provider badges" description={getFeatures().standaloneAgents ? 'Display the AI provider name next to sessions and agents using non-default providers' : 'Display the AI provider name next to sessions using non-default providers'}>
         <Toggle
           checked={showProviderBadges}
           onChange={setShowProviderBadges}
@@ -924,6 +927,46 @@ function RemoteTab() {
   )
 }
 
+function StandaloneAgentsSetting() {
+  const effective = getFeatures().standaloneAgents
+  const [enabled, setEnabled] = useState(effective)
+  const [busy, setBusy] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    void getApi().settings.get(STANDALONE_AGENTS_SETTING).then((value) => {
+      if (active) setEnabled(value === 'true')
+    }).catch(() => {
+      if (active) setError('Could not load the Agents preference. Reopen Settings to try again.')
+    }).finally(() => { if (active) setBusy(false) })
+    return () => { active = false }
+  }, [])
+
+  const save = async (next: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await getApi().settings.set(STANDALONE_AGENTS_SETTING, String(next))
+      setEnabled(next)
+    } catch {
+      setError('Could not save the Agents preference. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <>
+    <SectionTitle>Experimental features</SectionTitle>
+    <SettingRow label="Enable standalone Agents" description="Off by default. Projects remain available. Agent definitions, notes, history, and schedules are preserved while disabled.">
+      <Toggle checked={enabled} disabled={busy} onChange={(value) => { void save(value) }} label="Enable standalone Agents" />
+    </SettingRow>
+    <p className="update-caption" role="status">{enabled !== effective
+      ? `Saved. Quit and reopen Sorcerer to ${enabled ? 'enable' : 'disable'} standalone Agents.`
+      : 'Changes take effect after you quit and reopen Sorcerer.'} Enabling Agents also resumes configured startup and scheduled runs.</p>
+    {error && <p className="update-error" role="alert">{error}</p>}
+  </>
+}
+
 function GeneralTab() {
   const [checkUpdates, setCheckUpdates] = useSetting('checkForUpdates', 'true')
   const [autoDownload, setAutoDownload] = useSetting('autoDownloadUpdates', 'true')
@@ -948,6 +991,8 @@ function GeneralTab() {
       </div>
       </> : <p className="update-caption">Manage desktop updates from Sorcerer on your computer.</p>}
 
+      {isElectron && <StandaloneAgentsSetting />}
+
       <SectionTitle>Interface</SectionTitle>
       <SettingRow label="Show feedback button" description="Display the Give feedback shortcut in the sidebar footer">
         <Toggle
@@ -958,7 +1003,7 @@ function GeneralTab() {
       </SettingRow>
 
       <SectionTitle>Data</SectionTitle>
-      <SettingRow label="Reset sidebar layout" description="Restore default sidebar width, agent/projects split, and expanded state">
+      <SettingRow label="Reset sidebar layout" description={getFeatures().standaloneAgents ? 'Restore default sidebar width, agent/projects split, and expanded state' : 'Restore default sidebar width and expanded state'}>
         <button
           className="settings-action-btn"
           type="button"
@@ -969,14 +1014,14 @@ function GeneralTab() {
           Reset
         </button>
       </SettingRow>
-      <SettingRow label="Reset dismissed workspaces" description="Re-show orphaned workspace and agent banners you previously dismissed">
+      <SettingRow label="Reset dismissed workspaces" description={getFeatures().standaloneAgents ? 'Re-show orphaned workspace and agent banners you previously dismissed' : 'Re-show orphaned workspace banners you previously dismissed'}>
         <button
           className="settings-action-btn"
           type="button"
           onClick={async () => {
             await Promise.all([
               getApi().settings.set('dismissedWorkspaces', '[]'),
-              getApi().settings.set('dismissedAgents', '[]')
+              ...(getFeatures().standaloneAgents ? [getApi().settings.set('dismissedAgents', '[]')] : [])
             ])
           }}
         >
@@ -1061,7 +1106,7 @@ function ProvidersTab() {
   return (
     <>
       <SectionTitle>Defaults</SectionTitle>
-      <SettingRow label="Default provider" description="Pre-selected when creating new sessions and agents">
+      <SettingRow label="Default provider" description={getFeatures().standaloneAgents ? 'Pre-selected when creating new sessions and agents' : 'Pre-selected when creating new sessions'}>
         <DialogSelect
           value={defaultProvider?.id || ''}
           onChange={setDefaultProvider}

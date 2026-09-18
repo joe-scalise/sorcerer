@@ -3,6 +3,7 @@ import { Dialog, DialogActions, DialogButton } from '../Dialog'
 import { useUIStore } from '../../stores/useUIStore'
 import { useAgentStore } from '../../stores/useAgentStore'
 import { useSessionStore } from '../../stores/useSessionStore'
+import { getFeatures } from '../../features'
 
 export function DeleteAgentDialog() {
   const { activeDialog, dialogTargetId, closeDialog } = useUIStore()
@@ -11,7 +12,7 @@ export function DeleteAgentDialog() {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const open = activeDialog === 'delete-agent'
+  const open = getFeatures().standaloneAgents && activeDialog === 'delete-agent'
   const agent = dialogTargetId ? agents.find((a) => a.id === dialogTargetId) : undefined
 
   const handleDelete = async () => {

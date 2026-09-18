@@ -297,6 +297,7 @@ export function createRemoteClient(baseUrl: string, token: string): SorcererAPI 
     },
 
     system: {
+      features: () => rpc('system:features'),
       userInfo: () => rpc('system:userInfo'),
       accountPicture: async () => null,
       memoryUsage: async () => ({ totalMB: 0, breakdown: [], processCount: 0 }),

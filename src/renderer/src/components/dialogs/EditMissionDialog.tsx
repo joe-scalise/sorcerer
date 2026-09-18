@@ -6,6 +6,7 @@ import { useUIStore } from '../../stores/useUIStore'
 import { useAgentStore } from '../../stores/useAgentStore'
 import { ChevronIcon } from '../icons'
 import { useProviders } from '../../hooks/useProviders'
+import { getFeatures } from '../../features'
 
 export function EditMissionDialog() {
   const { activeDialog, dialogTargetId, closeDialog } = useUIStore()
@@ -21,7 +22,7 @@ export function EditMissionDialog() {
   const [loading, setLoading] = useState(false)
   const { defaultProvider } = useProviders()
 
-  const open = activeDialog === 'edit-agent-mission'
+  const open = getFeatures().standaloneAgents && activeDialog === 'edit-agent-mission'
   const agent = agents.find((a) => a.id === dialogTargetId)
 
   useEffect(() => {

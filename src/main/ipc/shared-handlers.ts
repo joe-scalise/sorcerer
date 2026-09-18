@@ -1,3 +1,4 @@
+import { getFeatureFlags, requireStandaloneAgents } from '../services/features'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import fs from 'fs'
@@ -1699,11 +1700,12 @@ export async function createSession(
 }
 
 export function spawnShell(
-  { pty }: HandlerServices,
+  { db, pty }: HandlerServices,
   sessionId: string,
   cwd: string
 ): { pid: number | undefined } {
   // Spawn a plain shell session (no worktree needed)
+  if (db.getAgent(sessionId)) requireStandaloneAgents(db)
   pty.spawn(sessionId, cwd)
   const pid = pty.getPid(sessionId)
   return { pid }
@@ -2302,7 +2304,7 @@ export function restoreSession(
 // ── Agent handlers ──────────────────────────────────────────
 
 export function listAgents({ db }: HandlerServices): any[] {
-  return db.listAgents()
+  return getFeatureFlags(db).standaloneAgents ? db.listAgents() : []
 }
 
 function writeAgentManifest(
@@ -2333,6 +2335,7 @@ export function addAgent(
     provider?: string; model?: string
   }
 ): any {
+  requireStandaloneAgents(db)
   const id = data.id || uuidv4()
   const resolvedProvider = data.provider || getDefaultProviderId(db)
   const resolvedModel = resolveLaunchModel(db, resolvedProvider, data.model, { refresh: resolvedProvider === 'codex' })
@@ -2362,6 +2365,7 @@ export function updateAgent(
   id: string,
   updates: any
 ): any {
+  requireStandaloneAgents(db)
   const agent = db.updateAgent(id, updates)
   // Keep manifest in sync when metadata changes
   if (agent && (updates.name || updates.description || updates.system_prompt || updates.mcp_config || updates.mission !== undefined || updates.provider || updates.model)) {
@@ -2383,6 +2387,7 @@ export function removeAgent(
   { db, pty }: HandlerServices,
   id: string
 ): void {
+  requireStandaloneAgents(db)
   if (pty.isRunning(id)) {
     pty.kill(id)
   }
@@ -2403,6 +2408,7 @@ export function startAgent(
   { db, pty }: HandlerServices,
   agentId: string
 ): any {
+  requireStandaloneAgents(db)
   const agent = db.getAgent(agentId)
   if (!agent) throw new Error('Agent not found')
 
@@ -2454,6 +2460,7 @@ export function resumeAgent(
   { db, pty }: HandlerServices,
   agentId: string
 ): any {
+  requireStandaloneAgents(db)
   const agent = db.getAgent(agentId)
   if (!agent) throw new Error('Agent not found')
 
@@ -2505,6 +2512,7 @@ export function restartAgent(
   { db, pty }: HandlerServices,
   agentId: string
 ): any {
+  requireStandaloneAgents(db)
   const agent = db.getAgent(agentId)
   if (!agent) throw new Error('Agent not found')
 
@@ -2557,6 +2565,7 @@ export function createAgentQuickTerminal(
   { db, pty }: HandlerServices,
   agentId: string
 ): { id: string; name: string; status: string; type: string; agentId: string; pid: number | null } {
+  requireStandaloneAgents(db)
   const agent = db.getAgent(agentId)
   if (!agent) throw new Error('Agent not found')
 
@@ -2576,6 +2585,7 @@ export function killAgent(
   { db, pty }: HandlerServices,
   agentId: string
 ): void {
+  requireStandaloneAgents(db)
   if (pty.isRunning(agentId)) {
     pty.kill(agentId)
   }
@@ -2681,6 +2691,7 @@ export function loadQuickNote(
   parentId: string,
   parentType: string
 ): any | undefined {
+  if (parentType === 'agent' && !getFeatureFlags(db).standaloneAgents) return undefined
   return db.getQuickNote(parentId, parentType)
 }
 
@@ -2691,6 +2702,7 @@ export function saveQuickNote(
   parentType: string,
   content: string
 ): void {
+  if (parentType === 'agent') requireStandaloneAgents(db)
   db.saveQuickNote(id, parentId, parentType, content)
 }
 
@@ -2699,13 +2711,14 @@ export function deleteQuickNote(
   parentId: string,
   parentType: string
 ): void {
+  if (parentType === 'agent') requireStandaloneAgents(db)
   db.deleteQuickNote(parentId, parentType)
 }
 
 export function listQuickNoteParents(
   { db }: HandlerServices
 ): { parent_id: string; parent_type: string }[] {
-  return db.listQuickNoteParents()
+  return db.listQuickNoteParents().filter((note) => note.parent_type !== 'agent' || getFeatureFlags(db).standaloneAgents)
 }
 
 // ── Remote Control handlers ─────────────────────────────────
@@ -2730,6 +2743,7 @@ export function setAgentRemoteControl(
   agentId: string,
   enabled: boolean
 ): any {
+  requireStandaloneAgents(db)
   db.updateAgent(agentId, { remote_control: enabled ? 1 : 0 })
 
   // If enabling on a running agent, send the command now

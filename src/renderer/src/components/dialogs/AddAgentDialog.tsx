@@ -7,6 +7,7 @@ import { useSessionStore } from '../../stores/useSessionStore'
 import { ChevronIcon, BotIcon, TerminalIcon } from '../icons'
 import { useProviders } from '../../hooks/useProviders'
 import { useToastStore } from '../../stores/useToastStore'
+import { getFeatures } from '../../features'
 
 type AgentMode = null | 'interactive' | 'autonomous'
 
@@ -32,7 +33,7 @@ export function AddAgentDialog() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const open = activeDialog === 'add-agent'
+  const open = getFeatures().standaloneAgents && activeDialog === 'add-agent'
   const selectedProvider = getProvider(provider) || defaultProvider
   const hasSuggestedModels = (selectedProvider?.models.length || 0) > 0
   const isCustomModel = customModel || (!!selectedProvider?.supportsModelOverride && !!model && !selectedProvider.models.includes(model))

@@ -22,6 +22,8 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useProjectStore } from './stores/useProjectStore'
 import { useSessionStore } from './stores/useSessionStore'
 import { useAgentStore } from './stores/useAgentStore'
+import { getFeatures } from './features'
+import { restoreSplitLayout } from './utils/restoreSplitLayout'
 import { useTeamStore } from './stores/useTeamStore'
 import { useQuickNotesStore } from './stores/useQuickNotesStore'
 import { useToastStore } from './stores/useToastStore'
@@ -47,22 +49,6 @@ function panelTargetExists(id: string, sessions: Session[], agents: Agent[]): bo
   }
 
   return sessions.some((session) => session.id === id) || agents.some((agent) => agent.id === id)
-}
-
-function sanitizeSplitNode(node: SplitNode, isValidTarget: (id: string) => boolean): SplitNode {
-  if (node.type === 'leaf') {
-    return node.sessionId && !isValidTarget(node.sessionId)
-      ? { ...node, sessionId: null }
-      : node
-  }
-
-  return {
-    ...node,
-    children: [
-      sanitizeSplitNode(node.children[0], isValidTarget),
-      sanitizeSplitNode(node.children[1], isValidTarget)
-    ]
-  }
 }
 
 function splitTreeHasLeafId(node: SplitNode | null, leafId: string | null): boolean {
@@ -121,7 +107,7 @@ export function App() {
     const isDevRuntime = window.location.protocol === 'http:'
     const validTarget = (id: string) => panelTargetExists(id, sessions, agents)
     const uiState = useUIStore.getState()
-    const sanitizedSplitRoot = uiState.splitRoot ? sanitizeSplitNode(uiState.splitRoot, validTarget) : null
+    const sanitizedSplitRoot = uiState.splitRoot ? restoreSplitLayout(uiState.splitRoot, validTarget) : null
     const nextFocusedPanelId = splitTreeHasLeafId(sanitizedSplitRoot, uiState.focusedPanelId)
       ? uiState.focusedPanelId
       : null
@@ -164,7 +150,15 @@ export function App() {
         if (cancelled) return
         const entityName = buildPopoutEntityName(panelId, sessions, agents)
         if (!entityName) continue
-        await getApi().popout.open('terminal', panelId, entityName)
+        try {
+          await getApi().popout.open('terminal', panelId, entityName)
+        } catch (error) {
+          console.error('Could not restore saved popout:', error)
+          const remaining = new Set(useUIStore.getState().poppedOutSessionIds)
+          remaining.delete(panelId)
+          useUIStore.setState({ poppedOutSessionIds: remaining })
+          useToastStore.getState().addToast('Could not reopen a saved window. Its content is available in the sidebar.', 'error')
+        }
         if (restoreDelayMs > 0) {
           await delay(restoreDelayMs)
         }
@@ -193,8 +187,8 @@ export function App() {
     const { loadTeams, loadTasks } = useTeamStore.getState()
 
     // Load all data on mount
-    const agentsPromise = loadAgents()
-    const agentGroupsPromise = loadAgentGroups().then(() => {
+    const agentsPromise = getFeatures().standaloneAgents ? loadAgents() : Promise.resolve()
+    const agentGroupsPromise = (getFeatures().standaloneAgents ? loadAgentGroups() : Promise.resolve()).then(() => {
       const agentGroups = useAgentStore.getState().groups
       const { expandedGroups } = useUIStore.getState()
       // Auto-expand agent groups on first load (if no groups are expanded yet)
@@ -281,11 +275,13 @@ export function App() {
 
     // Listen for auto-restarted agents — update store so TerminalView re-attaches
     const unsubAgentRestarted = getApi().terminal.onAgentRestarted((sessionId: string, status: string, pid: number | null) => {
+      if (!getFeatures().standaloneAgents) return
       useAgentStore.getState().updateAgentInStore(sessionId, { status: status as any, pid })
     })
 
     // Listen for completed agent runs — show toast with findings
     const unsubAgentRunComplete = getApi().terminal.onAgentRunComplete((agentId: string, agentName: string, preview: string, level: string) => {
+      if (!getFeatures().standaloneAgents) return
       if (level === 'error') {
         useToastStore.getState().addToast(`${agentName}: ${preview}`, 'error')
       }
@@ -433,7 +429,7 @@ export function App() {
   return (
     <div className="app-shell">
       <Sidebar />
-      <MainContent />
+      {layoutRestored ? <MainContent /> : <main className="main-content"><div className="terminal-placeholder" role="status">Restoring workspace…</div></main>}
       <ContextMenu />
       <ToastContainer />
       <NewSessionDialog />
@@ -443,10 +439,10 @@ export function App() {
       <LandDialog />
       <ArchiveDialog />
       <SettingsDialog />
-      <AddAgentDialog />
-      <DeleteAgentDialog />
+      {getFeatures().standaloneAgents && <AddAgentDialog />}
+      {getFeatures().standaloneAgents && <DeleteAgentDialog />}
       <QuickNotesOverlay />
-      <EditMissionDialog />
+      {getFeatures().standaloneAgents && <EditMissionDialog />}
       <MoveToGroupDialog />
       <FeedbackDialog />
       <BriefingPanel open={briefingOpen} onClose={closeBriefing} />

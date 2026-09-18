@@ -1,3 +1,4 @@
+import { getFeatureFlags } from './features'
 /**
  * Agent Orchestrator — Schedules and runs autonomous agent missions.
  *
@@ -50,7 +51,7 @@ export class AgentOrchestrator {
    * Start the orchestrator — polls every 30 seconds for agents due to run.
    */
   start(): void {
-    if (this.pollInterval) return
+    if (!getFeatureFlags(this.db).standaloneAgents || this.pollInterval) return
     console.log('[orchestrator] Started')
 
     // Initial check after 5 seconds (let app finish loading)
@@ -247,6 +248,7 @@ export class AgentOrchestrator {
    * Manually trigger a run for an agent (outside of schedule).
    */
   runNow(agentId: string): void {
+    if (!getFeatureFlags(this.db).standaloneAgents || !this.pollInterval) return
     const agent = this.db.getAgent(agentId)
     if (!agent || !agent.mission) return
     if (this.runningAgents.has(agentId) || this.pty.isRunning(agentId)) return

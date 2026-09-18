@@ -15,6 +15,7 @@ import { AgentOrchestrator } from '../agent-orchestrator'
 function setup(hasHistory = false) {
   const agent = { id: 'agent-one', name: 'Scheduled agent', mission: 'Check work', schedule_minutes: 1, last_run_at: 0, provider: 'claude', model: 'test-model' }
   const db = {
+    getSetting: vi.fn(() => 'true'),
     listAgents: vi.fn(() => [agent]), getAgent: vi.fn(() => agent),
     getLatestAgentRun: vi.fn(() => hasHistory ? {} : undefined),
     updateAgent: vi.fn(), saveAgentRun: vi.fn(), listAgentRuns: vi.fn(() => [])
@@ -35,6 +36,22 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('agent orchestrator restart lifecycle', () => {
+  it('never schedules or runs Agents while the feature is disabled', () => {
+    const { orchestrator, db, pty } = setup()
+    db.getSetting.mockReturnValue('false')
+    orchestrator.start()
+    orchestrator.runNow('agent-one')
+    vi.advanceTimersByTime(120_000)
+    expect(pty.spawn).not.toHaveBeenCalled()
+    expect(db.listAgents).not.toHaveBeenCalled()
+    expect(pty.onExit).not.toHaveBeenCalled()
+    // Saving the preference cannot start work in the current process.
+    db.getSetting.mockReturnValue('true')
+    orchestrator.start()
+    vi.advanceTimersByTime(120_000)
+    expect(pty.spawn).not.toHaveBeenCalled()
+  })
+
   it('cancels the startup check when stopped before its first scheduled poll', () => {
     const { orchestrator, pty, db } = setup()
     orchestrator.start()
