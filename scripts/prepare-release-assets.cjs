@@ -9,7 +9,7 @@ async function prepareReleaseAssets(root, directory) {
     `Sorcerer-${version}-win-x64.exe`,
     `Sorcerer-${version}-mac-arm64.dmg`,
     `Sorcerer-${version}-mac-x64.dmg`,
-    `Sorcerer-${version}-linux-x64.AppImage`
+    `Sorcerer-${version}-linux-x86_64.AppImage`
   ].sort()
   const actual = fs.readdirSync(directory).filter((name) => name !== 'SHA256SUMS.txt').sort()
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {

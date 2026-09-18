@@ -17,7 +17,7 @@ function fixture(t) {
   fs.writeFileSync(notes, '# Sorcerer v1.8.0\n\nReleased: 2026-09-18\n\n## Highlights\n\n- New features.\n\n## Fixes and polish\n\n- Bug fixes.\n\n## Notes\n\n- Includes all changes since v1.7.22.\n')
   const directory = path.join(root, 'artifacts')
   fs.mkdirSync(directory)
-  const assets = ['Sorcerer-1.8.0-win-x64.exe', 'Sorcerer-1.8.0-mac-arm64.dmg', 'Sorcerer-1.8.0-mac-x64.dmg', 'Sorcerer-1.8.0-linux-x64.AppImage']
+  const assets = ['Sorcerer-1.8.0-win-x64.exe', 'Sorcerer-1.8.0-mac-arm64.dmg', 'Sorcerer-1.8.0-mac-x64.dmg', 'Sorcerer-1.8.0-linux-x86_64.AppImage']
   for (const name of assets) fs.writeFileSync(path.join(directory, name), `fixture: ${name}`)
   return { root, notes, directory, assets }
 }
