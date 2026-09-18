@@ -39,6 +39,10 @@ Every issue should include:
 
 ## Release Notes
 
+Batch small fixes and UI polish changes before shipping. Do not bump versions,
+create release tags, or publish a release for each small change. Wait for the
+user to explicitly request a release or approve a collected batch.
+
 If your task touches release notes, follow `docs/releases/README.md`.
 Every release note must include:
 

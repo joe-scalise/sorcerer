@@ -1,6 +1,6 @@
 {
   "name": "sorcerer",
-  "version": "1.8.5",
+  "version": "1.8.4",
   "description": "Multi-session desktop workbench for orchestrating AI coding agents in isolated Git worktrees.",
   "homepage": "https://sorcerer.sh",
   "repository": {
