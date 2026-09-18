@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { subscribeToUpdates, useUpdateStore } from '../useUpdateStore'
-import { UpdateActions, updateStatusText } from '../../components/Updates'
+import { SidebarUpdate, UpdateActions, updateStatusText } from '../../components/Updates'
 import type { UpdateState } from '../../../../shared/update'
 
 const snapshot = (revision: number, patch: Partial<UpdateState> = {}): UpdateState => ({
@@ -16,6 +16,33 @@ beforeEach(() => {
 })
 
 describe('update status and actions', () => {
+  it('keeps footer installation user-initiated, shows failures, and disables it while preparing', async () => {
+    const install = vi.fn().mockRejectedValue(new Error('Could not save a note. Try again.'))
+    ;(window as any).sorcerer = { system: { updates: { install } } }
+    const node = document.createElement('div')
+    const root = createRoot(node)
+    try {
+      act(() => {
+        useUpdateStore.setState({ state: snapshot(1, { status: 'downloaded', downloaded: true, version: '1.9.0' }) })
+        root.render(<SidebarUpdate />)
+      })
+      expect(install).not.toHaveBeenCalled()
+      await act(async () => { node.querySelector<HTMLButtonElement>('.sidebar-update-install')!.click() })
+      expect(install).toHaveBeenCalledOnce()
+      expect(node.querySelector('[role="alert"]')?.textContent).toContain('Could not save a note')
+      act(() => { useUpdateStore.setState({ state: snapshot(2, { status: 'installing', downloaded: true, version: '1.9.0' }), actionError: null }) })
+      expect(node.querySelector<HTMLButtonElement>('.sidebar-update-install')!.disabled).toBe(true)
+      act(() => node.querySelector<HTMLButtonElement>('.sidebar-update-install')!.click())
+      expect(install).toHaveBeenCalledOnce()
+      act(() => root.render(<SidebarUpdate collapsed />))
+      act(() => node.querySelector<HTMLButtonElement>('button')!.click())
+      expect(useUpdateStore.getState().open).toBe(true)
+      expect(install).toHaveBeenCalledOnce()
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
   it('ignores a stale snapshot arriving after a newer event and unsubscribes', async () => {
     let resolve!: (state: UpdateState) => void
     const unsubscribe = vi.fn()
