@@ -1,13 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/renderMarkdown'
 import { getApi } from '../api/client'
 import { RefreshIcon, BotIcon, ClockIcon, TrashIcon } from './icons'
 
-// Configure marked for tight, safe output
-marked.setOptions({
-  breaks: false,
-  gfm: true
-})
 
 interface BriefingResult {
   text: string
@@ -190,7 +185,7 @@ export function BriefingPanel({ open, onClose }: { open: boolean; onClose: () =>
             ) : displayError ? (
               <div className="briefing-error">{displayError}</div>
             ) : displayText ? (
-              <div className="briefing-text" dangerouslySetInnerHTML={{ __html: marked.parse(displayText) as string }} />
+              <div className="briefing-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayText) }} />
             ) : (
               <div className="briefing-loading">
                 <span>No briefing yet. Click refresh to generate one.</span>
@@ -202,4 +197,3 @@ export function BriefingPanel({ open, onClose }: { open: boolean; onClose: () =>
     </div>
   )
 }
-

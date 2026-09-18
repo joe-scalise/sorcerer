@@ -143,7 +143,12 @@ export class ApiServer {
   // ── Lifecycle ─────────────────────────────────────────────
 
   async start(): Promise<void> {
-    this.httpServer = http.createServer((req, res) => this.handleRequest(req, res))
+    this.httpServer = http.createServer((req, res) => {
+      void this.handleRequest(req, res).catch((err) => {
+        if (!res.headersSent) this.handleRequestError(res, err)
+        else res.destroy()
+      })
+    })
 
     // Create WebSocket handler (hooks into upgrade events on the HTTP server)
     this.wsHandler = new WebSocketHandler(
@@ -272,7 +277,14 @@ export class ApiServer {
       return
     }
 
-    const url = new URL(req.url || '/', `http://${req.headers.host}`)
+    let url: URL
+    try {
+      // Route matching must not parse an attacker-controlled Host header.
+      url = new URL(req.url || '/', 'http://localhost')
+    } catch {
+      this.sendError(res, 400, 'invalid_url', 'Invalid request URL')
+      return
+    }
 
     if (req.method === 'GET' && url.pathname === '/api/mobile/v1/protocol') {
       this.sendJson(res, 200, MOBILE_PROTOCOL_INFO)

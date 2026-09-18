@@ -14,11 +14,14 @@ export function ToastContainer() {
         <div
           key={toast.id}
           className={`toast toast--${toast.type}${toast.dismissing ? ' toast--dismissing' : ''}`}
-          onClick={() => removeToast(toast.id)}
+          role={toast.type === 'error' ? 'alert' : 'status'}
           onMouseEnter={() => pauseToast(toast.id)}
           onMouseLeave={() => resumeToast(toast.id)}
+          onFocus={() => pauseToast(toast.id)}
+          onBlur={() => resumeToast(toast.id)}
         >
           <span className="toast-message">{toast.message}</span>
+          <button className="toast-dismiss" type="button" aria-label="Dismiss notification" onClick={() => removeToast(toast.id)}>&times;</button>
         </div>
       ))}
     </div>

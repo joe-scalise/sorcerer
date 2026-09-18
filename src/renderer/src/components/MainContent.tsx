@@ -9,6 +9,7 @@ import { GitBranchIcon, TerminalIcon, BotIcon, NotesIcon, SplitHorizontalIcon, S
 import { TerminalView } from './TerminalView'
 import { QuickNotesPanel, parseQuickNotesPanelId } from './QuickNotesPanel'
 import { useQuickNotesStore } from '../stores/useQuickNotesStore'
+import { useToastStore } from '../stores/useToastStore'
 import { MissionPanel } from './MissionPanel'
 import { ParticleCanvas } from './ParticleCanvas'
 import { PanelActionsMenu, type PanelActionMenuItem } from './PanelActionsMenu'
@@ -168,7 +169,11 @@ function IdleAgentPanel({ agent }: { agent: Agent }) {
       ) : null}
       <div className="terminal-action-row">
         {isAutonomous ? (
-          <button className="terminal-restart-btn terminal-restart-btn--primary" onClick={() => startAgent(agent.id)}>
+          <button className="terminal-restart-btn terminal-restart-btn--primary" onClick={() => {
+            void startAgent(agent.id).catch((error) => {
+              useToastStore.getState().addToast(error instanceof Error ? error.message : 'Could not start agent. Please try again.', 'error')
+            })
+          }}>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
               <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z" />
               <path fillRule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z" />
@@ -587,7 +592,10 @@ function SplitNodeView({ node }: { node: SplitNode }) {
               }
               // Quick terminals: auto-delete on panel close
               if (session?.type === 'quick-terminal') {
-                deleteSession(session.id)
+                void deleteSession(session.id).then(() => closePanel(node.id)).catch(() => {
+                  useToastStore.getState().addToast('Could not close the terminal. Please try again.', 'error')
+                })
+                return
               }
               closePanel(node.id)
             }}>&times;</button>
@@ -903,7 +911,10 @@ export function MainContent() {
               <PanelActionsMenu items={activePanelMenuItems} />
               <button className="split-panel-close" onClick={() => {
                 if (activeSession?.type === 'quick-terminal') {
-                  deleteSession(activeSession.id)
+                  void deleteSession(activeSession.id).catch(() => {
+                    useToastStore.getState().addToast('Could not close the terminal. Please try again.', 'error')
+                  })
+                  return
                 }
                 useSessionStore.setState({ activeSessionId: null })
               }}>&times;</button>

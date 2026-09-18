@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, type ReactNode } from 'react'
+import React, { useId, useRef, type ReactNode } from 'react'
 import { useUIStore } from '../stores/useUIStore'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 
 interface DialogProps {
   open: boolean
@@ -12,15 +13,8 @@ interface DialogProps {
 export function Dialog({ open, onClose, title, children, variant = 'default' }: DialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const dialogClosing = useUIStore((s) => s.dialogClosing)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  const dialogRef = useDialogFocus(open, onClose)
+  const titleId = useId()
 
   if (!open) return null
 
@@ -30,10 +24,10 @@ export function Dialog({ open, onClose, title, children, variant = 'default' }: 
       ref={overlayRef}
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className={`dialog ${variant === 'danger' ? 'dialog--danger' : ''} ${dialogClosing ? 'dialog--closing' : ''}`}>
+      <div ref={dialogRef} id={`${titleId}-dialog`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={`dialog ${variant === 'danger' ? 'dialog--danger' : ''} ${dialogClosing ? 'dialog--closing' : ''}`}>
         <div className="dialog-header">
-          <h2 className="dialog-title">{title}</h2>
-          <button className="dialog-close" onClick={onClose}>
+          <h2 id={titleId} className="dialog-title">{title}</h2>
+          <button type="button" className="dialog-close" onClick={onClose} aria-label={`Close ${title}`}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -76,8 +70,10 @@ export function DialogButton({ children, variant = 'secondary', onClick, type, d
       onClick={onClick}
       type={type || 'button'}
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
     >
-      {loading ? <span className="btn-spinner" /> : children}
+      {loading && <span className="btn-spinner" aria-hidden="true" />}
+      {children}
     </button>
   )
 }

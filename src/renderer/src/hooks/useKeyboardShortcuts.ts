@@ -5,6 +5,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import { useProjectStore } from '../stores/useProjectStore'
 import { findLeaf } from '../stores/useUIStore'
 import { useQuickNotesStore } from '../stores/useQuickNotesStore'
+import { useToastStore } from '../stores/useToastStore'
 import { focusTerminal } from '../components/TerminalView'
 
 /** Refocus the active session's terminal */
@@ -31,7 +32,9 @@ function closeActivePanel(): boolean {
       : undefined
 
     if (focusedSession?.type === 'quick-terminal') {
-      deleteSession(focusedSession.id)
+      void deleteSession(focusedSession.id).catch(() => {
+        useToastStore.getState().addToast('Could not close the terminal. Please try again.', 'error')
+      })
       return true
     }
 
@@ -48,7 +51,9 @@ function closeActivePanel(): boolean {
 
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   if (activeSession?.type === 'quick-terminal') {
-    deleteSession(activeSession.id)
+    void deleteSession(activeSession.id).catch(() => {
+      useToastStore.getState().addToast('Could not close the terminal. Please try again.', 'error')
+    })
     return true
   }
 
@@ -107,7 +112,7 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't fire shortcuts when a dialog is open
-      if (activeDialog) return
+      if (activeDialog || useUIStore.getState().contextMenu || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return
 
       // Alt+↑ / Alt+↓ — navigate sessions/agents
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -197,6 +202,9 @@ export function useKeyboardShortcuts() {
 
       // Escape — clear search, exit focus mode, unmaximize, close panel, or refocus terminal
       if (e.key === 'Escape') {
+        // Escape belongs to terminal applications and editors while they have focus.
+        const target = e.target as HTMLElement | null
+        if (target?.closest('.xterm, textarea, [contenteditable="true"], input:not(.search-input)')) return
         const searchInput = document.querySelector('.search-input') as HTMLInputElement | null
         if (document.activeElement === searchInput) {
           const { searchQuery, setSearchQuery } = useUIStore.getState()

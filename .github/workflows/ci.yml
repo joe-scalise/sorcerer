@@ -9,14 +9,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -26,6 +31,11 @@ jobs:
 
       - run: npm ci
 
+      - name: Validate release metadata and tooling
+        run: |
+          npm run release:check
+          node --test scripts/release-checks.cjs
+
       - name: Rebuild native modules for Electron
         run: npm run rebuild
 
@@ -33,4 +43,4 @@ jobs:
         run: npm run verify
 
       - name: Run tests
-        run: npx vitest run
+        run: npm test

@@ -2997,6 +2997,10 @@ select.dialog-input option {
 }
 
 .dialog-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   height: 34px;
   padding: 0 16px;
   border-radius: var(--radius-md);
@@ -3409,6 +3413,24 @@ button:focus-visible,
 
 .toast-message {
   font-size: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.toast-dismiss {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.toast-dismiss:hover {
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -5399,6 +5421,18 @@ button:focus-visible,
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
+}
+
+.quick-notes-status {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.quick-notes-status--error {
+  color: var(--danger);
 }
 
 .quick-notes-copy-btn {

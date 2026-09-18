@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { getApi } from '../api/client'
+import { useEffect, useRef, useState } from 'react'
 import { useToastStore } from '../stores/useToastStore'
-import { useQuickNotesStore } from '../stores/useQuickNotesStore'
+import { noteKey, useQuickNotesDraftStore } from '../stores/useQuickNotesDraftStore'
 import { CopyIcon, TrashIcon } from './icons'
 
 interface QuickNotesEditorProps {
@@ -12,59 +11,27 @@ interface QuickNotesEditorProps {
 }
 
 export function QuickNotesEditor({ parentId, parentType, parentName, onDeleted }: QuickNotesEditorProps) {
-  const [content, setContent] = useState('')
-  const [noteId, setNoteId] = useState<string | null>(null)
+  const draft = useQuickNotesDraftStore((state) => state.drafts[noteKey(parentId, parentType)])
   const [copied, setCopied] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { addToast } = useToastStore()
+  const content = draft?.content ?? ''
 
-  // Load note on mount
   useEffect(() => {
-    let cancelled = false
-    getApi().quickNotes.load(parentId, parentType).then((note: any) => {
-      if (cancelled) return
-      if (note) {
-        setContent(note.content as string)
-        setNoteId(note.id as string)
-      }
-    })
-    return () => { cancelled = true }
+    void useQuickNotesDraftStore.getState().load(parentId, parentType)
+    return () => {
+      void useQuickNotesDraftStore.getState().flush(parentId, parentType)
+    }
   }, [parentId, parentType])
 
-  // Auto-focus on mount
   useEffect(() => {
-    textareaRef.current?.focus()
+    if (draft?.loaded) textareaRef.current?.focus()
+  }, [parentId, parentType, draft?.loaded])
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
   }, [])
-
-  // Debounced save
-  const save = useCallback((text: string) => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => {
-      let id = noteId
-      if (!id) {
-        id = crypto.randomUUID()
-        setNoteId(id)
-      }
-      getApi().quickNotes.save(id, parentId, parentType, text)
-      useQuickNotesStore.getState().markSaved(parentId)
-    }, 500)
-  }, [noteId, parentId, parentType])
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
-    }
-  }, [])
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value
-    setContent(text)
-    save(text)
-  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -77,12 +44,19 @@ export function QuickNotesEditor({ parentId, parentType, parentName, onDeleted }
   }
 
   const handleDelete = async () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    await getApi().quickNotes.delete(parentId, parentType)
-    useQuickNotesStore.getState().clearSaved(parentId)
-    setContent('')
-    setNoteId(null)
-    onDeleted?.()
+    try {
+      await useQuickNotesDraftStore.getState().remove(parentId, parentType)
+      onDeleted?.()
+    } catch {
+      addToast('Failed to delete notes. Your notes have been kept.', 'error')
+    }
+  }
+
+  const handleRetry = () => {
+    const store = useQuickNotesDraftStore.getState()
+    if (draft?.error?.startsWith('Could not delete')) void handleDelete()
+    else if (draft?.loaded) void store.flush(parentId, parentType)
+    else void store.load(parentId, parentType)
   }
 
   return (
@@ -90,23 +64,35 @@ export function QuickNotesEditor({ parentId, parentType, parentName, onDeleted }
       <div className="quick-notes-toolbar">
         <span className="quick-notes-label">{parentName}</span>
         <div className="quick-notes-toolbar-actions">
-          <button className="quick-notes-copy-btn" onClick={handleCopy} title="Copy notes">
+          <button className="quick-notes-copy-btn" onClick={handleCopy} title="Copy notes" disabled={!draft?.loaded}>
             <CopyIcon />
             {copied ? 'Copied' : 'Copy'}
           </button>
-          {(content.length > 0 || noteId) && (
-            <button className="quick-notes-delete-btn" onClick={handleDelete} title="Delete notes">
+          {content.length > 0 && (
+            <button className="quick-notes-delete-btn" onClick={handleDelete} title="Delete notes" disabled={draft?.deleting}>
               <TrashIcon />
-              Delete
+              {draft?.deleting ? 'Deleting...' : 'Delete'}
             </button>
           )}
         </div>
       </div>
+      {draft?.error ? (
+        <div role="alert" className="quick-notes-status quick-notes-status--error">
+          {draft.error} <button className="quick-notes-copy-btn" onClick={handleRetry}>Retry</button>
+        </div>
+      ) : (
+        <span className="quick-notes-status" role="status">
+          {!draft?.loaded ? 'Loading notes...' : draft.saving || draft.dirty ? 'Saving...' : content ? 'Saved' : 'Notes save automatically'}
+        </span>
+      )}
       <textarea
         ref={textareaRef}
         className="quick-notes-textarea"
         value={content}
-        onChange={handleChange}
+        onChange={(event) => useQuickNotesDraftStore.getState().update(parentId, parentType, event.target.value)}
+        onBlur={() => { void useQuickNotesDraftStore.getState().flush(parentId, parentType) }}
+        disabled={!draft?.loaded || draft.deleting}
+        aria-label={`Notes for ${parentName}`}
         placeholder="Type your notes here..."
         spellCheck={false}
       />

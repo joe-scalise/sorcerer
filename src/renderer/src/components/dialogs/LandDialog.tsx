@@ -8,11 +8,16 @@ interface HealthCheck {
   behind: number
   ahead: number
   loading: boolean
+  error?: boolean
 }
 
 function HealthCheckInfo({ health }: { health: HealthCheck }) {
   if (health.loading) {
-    return <p className="dialog-confirm-subtext" style={{ opacity: 0.6 }}>Checking branch health...</p>
+    return <p className="dialog-confirm-subtext" role="status">Checking branch health...</p>
+  }
+
+  if (health.error) {
+    return <p className="dialog-error" role="alert">Could not check branch health. Close and reopen this dialog to retry.</p>
   }
 
   if (health.behind === 0) {
@@ -66,25 +71,29 @@ export function LandDialog() {
   // Run health check when dialog opens
   useEffect(() => {
     if (!open || !dialogTargetId) return
+    let cancelled = false
     setHealth({ behind: 0, ahead: 0, loading: true })
     setError(null)
     getApi().session.divergence(dialogTargetId).then((d) => {
+      if (cancelled) return
       setHealth({
         behind: d?.behind ?? 0,
         ahead: d?.ahead ?? 0,
-        loading: false
+        loading: false,
+        error: !d
       })
     }).catch(() => {
-      setHealth({ behind: 0, ahead: 0, loading: false })
+      if (!cancelled) setHealth({ behind: 0, ahead: 0, loading: false, error: true })
     })
+    return () => { cancelled = true }
   }, [open, dialogTargetId])
 
   const handleConfirm = async () => {
-    if (!dialogTargetId || landing) return
+    if (!session || landing || health.loading || health.error) return
     setLanding(true)
     setError(null)
     try {
-      await landOnMain(dialogTargetId)
+      await landOnMain(session.id)
       closeDialog()
     } catch (err: any) {
       console.error('[LandDialog] land-on-main failed:', err)
@@ -134,7 +143,7 @@ export function LandDialog() {
           </>
         )}
         {error && (
-          <div className="dialog-error">
+          <div className="dialog-error" role="alert">
             <strong>Landing failed</strong>
             <p>{error}</p>
           </div>
@@ -144,7 +153,7 @@ export function LandDialog() {
         <DialogButton onClick={handleClose} disabled={landing}>
           {error ? 'Close' : 'Cancel'}
         </DialogButton>
-        <DialogButton variant="primary" onClick={handleConfirm} disabled={landing || health.loading}>
+        <DialogButton variant="primary" onClick={handleConfirm} disabled={!session || landing || health.loading || health.error}>
           {landing ? 'Landing...' : error ? 'Retry' : 'Land'}
         </DialogButton>
       </DialogActions>

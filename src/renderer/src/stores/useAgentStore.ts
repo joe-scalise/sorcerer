@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Agent, AgentGroup } from '../types'
 import { useUIStore, clearSessionFromTree } from './useUIStore'
 import { useQuickNotesStore } from './useQuickNotesStore'
+import { useQuickNotesDraftStore } from './useQuickNotesDraftStore'
 import { disposeTerminal } from '../components/TerminalView'
 import { getApi } from '../api/client'
 
@@ -58,7 +59,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       return agent.id
     } catch (err) {
       console.error('[agent-store] addAgent failed:', err)
-      return null
+      throw err
     }
   },
 
@@ -81,7 +82,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       disposeTerminal(id)
 
       // Clean up quick notes
-      getApi().quickNotes.delete(id, 'agent')
+      await useQuickNotesDraftStore.getState().remove(id, 'agent').catch((err) => {
+        console.error('[agent-store] Notes cleanup failed:', err)
+      })
       const qnState = useQuickNotesStore.getState()
       if (qnState.overlayOpen && qnState.overlayParentId === id) {
         qnState.closeOverlay()
@@ -100,6 +103,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       set((state) => ({ agents: state.agents.filter((a) => a.id !== id) }))
     } catch (err) {
       console.error('[agent-store] removeAgent failed:', err)
+      throw err
     }
   },
 
@@ -113,6 +117,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       }
     } catch (err) {
       console.error('[agent-store] startAgent failed:', err)
+      throw err
     }
   },
 

@@ -8,6 +8,7 @@ import { PTYService } from '../services/pty-service'
 import { DatabaseService } from '../services/database-service'
 import { WorktreeService } from '../services/worktree-service'
 import { FileWatcherService } from '../services/file-watcher-service'
+import { isExternalWebUrl } from '../window-security'
 import {
   HandlerServices,
   listProjects,
@@ -519,7 +520,10 @@ export function registerIPC(
 
     const url = await worktreeService.getRemoteUrl(project.path as string)
     if (url) {
-      shell.openExternal(url)
+      if (!isExternalWebUrl(url)) {
+        return { opened: false, error: 'The remote URL must use HTTP or HTTPS to open in a browser' }
+      }
+      await shell.openExternal(url)
       return { opened: true, url }
     }
     return { opened: false, error: 'No remote URL found' }

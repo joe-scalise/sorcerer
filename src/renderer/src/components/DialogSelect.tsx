@@ -171,9 +171,15 @@ export function DialogSelect({ value, onChange, options, disabled = false, place
       }
       return
     }
-    if (event.key === 'Escape' || event.key === 'Tab') {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
       setOpen(false)
-      requestAnimationFrame(() => triggerRef.current?.focus())
+      triggerRef.current?.focus()
+    } else if (event.key === 'Tab') {
+      // Move from the trigger in normal tab order after closing the portalled list.
+      setOpen(false)
+      triggerRef.current?.focus()
     }
   }
 
@@ -202,6 +208,7 @@ export function DialogSelect({ value, onChange, options, disabled = false, place
           id={listboxId}
           className="dialog-select__menu"
           role="listbox"
+          data-dialog-owner={triggerRef.current?.closest('[role="dialog"]')?.id}
           tabIndex={-1}
           onKeyDown={handleMenuKeyDown}
           style={menuPosition ? {
@@ -221,6 +228,7 @@ export function DialogSelect({ value, onChange, options, disabled = false, place
                 type="button"
                 role="option"
                 aria-selected={selected}
+                tabIndex={-1}
                 className={[
                   'dialog-select__option',
                   selected ? 'dialog-select__option--selected' : '',

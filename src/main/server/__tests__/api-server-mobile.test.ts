@@ -128,10 +128,11 @@ interface TestResponse {
 function request(
   port: number,
   pathname: string,
-  options: { method?: string; token?: string; body?: string } = {}
+  options: { method?: string; token?: string; body?: string; hostHeader?: string } = {}
 ): Promise<TestResponse> {
   return new Promise((resolve, reject) => {
     const headers: Record<string, string | number> = {}
+    if (options.hostHeader !== undefined) headers.Host = options.hostHeader
     if (options.token) headers.Authorization = `Bearer ${options.token}`
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json'
@@ -186,6 +187,21 @@ describe('ApiServer mobile v1', () => {
     expect(response.body.endpoints.rpc).toBe('/api/mobile/v1/rpc')
     expect(response.text).not.toContain(LEGACY_TOKEN)
     expect(response.headers['cache-control']).toBe('no-store')
+  })
+
+  it('ignores malformed Host headers when matching public routes', async () => {
+    const response = await request(port, '/api/mobile/v1/protocol', { hostHeader: '[' })
+    expect(response.status).toBe(200)
+    expect(response.body.protocolVersion).toBe(1)
+  })
+
+  it('rejects malformed request targets and continues serving requests', async () => {
+    const malformed = await request(port, 'http://[')
+    expect(malformed.status).toBe(400)
+    expect(malformed.body.code).toBe('invalid_url')
+
+    const healthy = await request(port, '/api/mobile/v1/protocol')
+    expect(healthy.status).toBe(200)
   })
 
   it('serves fragment bootstrap with the exact native authentication-failure signal', async () => {

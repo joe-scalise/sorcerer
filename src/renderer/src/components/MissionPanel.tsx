@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/renderMarkdown'
 import { getApi } from '../api/client'
 import { RefreshIcon, ClockIcon, BotIcon } from './icons'
 import type { Agent } from '../types'
 
-marked.setOptions({ breaks: false, gfm: true })
 
 interface AgentRun {
   id: string
@@ -125,7 +124,7 @@ export function MissionPanel({ agent }: { agent: Agent }) {
               </div>
               <div
                 className="mission-output-content briefing-text"
-                dangerouslySetInnerHTML={{ __html: marked.parse(selectedRun.output) as string }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(selectedRun.output) }}
               />
             </>
           ) : (

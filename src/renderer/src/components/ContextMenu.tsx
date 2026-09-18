@@ -27,8 +27,11 @@ export function ContextMenu() {
   const menuRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null)
   const [loadingItem, setLoadingItem] = useState<number | null>(null)
+  const actionInFlight = useRef<object | null>(null)
   const [resumeHealth, setResumeHealth] = useState<SessionResumeHealth | null>(null)
   const [sessionDiagnostics, setSessionDiagnostics] = useState<SessionDiagnostics | null>(null)
+
+  useEffect(() => { setLoadingItem(null) }, [contextMenu])
 
   const updateMenuPosition = () => {
     if (!contextMenu || !menuRef.current) {
@@ -100,11 +103,11 @@ export function ContextMenu() {
       }
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { closeContextMenu(); return }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeContextMenu(); return }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         if (!menuRef.current) return
-        const btns = Array.from(menuRef.current.querySelectorAll<HTMLButtonElement>('.context-menu-item'))
+        const btns = Array.from(menuRef.current.querySelectorAll<HTMLButtonElement>('.context-menu-item:not(:disabled)'))
         if (btns.length === 0) return
         const idx = btns.indexOf(document.activeElement as HTMLButtonElement)
         if (e.key === 'ArrowDown') {
@@ -114,12 +117,13 @@ export function ContextMenu() {
         }
       }
     }
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       window.addEventListener('click', onClick)
       window.addEventListener('contextmenu', onClick)
       window.addEventListener('keydown', onKey)
     })
     return () => {
+      cancelAnimationFrame(frame)
       window.removeEventListener('click', onClick)
       window.removeEventListener('contextmenu', onClick)
       window.removeEventListener('keydown', onKey)
@@ -600,24 +604,30 @@ export function ContextMenu() {
           <button
             key={i}
             className={`context-menu-item ${item.danger ? 'context-menu-item--danger' : ''} ${loadingItem === i ? 'context-menu-item--active' : ''}`}
-            disabled={item.disabled || (loadingItem !== null && loadingItem !== i)}
+            disabled={item.disabled || loadingItem !== null}
             onClick={async () => {
-              if (item.disabled) return
+              if (item.disabled || actionInFlight.current === contextMenu) return
+              actionInFlight.current = contextMenu
               let spinnerTimer: ReturnType<typeof setTimeout> | null = null
               if (item.eager) {
                 setLoadingItem(i)
               } else {
                 spinnerTimer = setTimeout(() => {
                   spinnerTimer = null
-                  setLoadingItem(i)
+                  if (useUIStore.getState().contextMenu === contextMenu) setLoadingItem(i)
                 }, 150)
               }
               try {
                 await Promise.resolve(item.action())
+              } catch (error) {
+                addToast(error instanceof Error ? error.message : 'Action failed. Please try again.', 'error')
               } finally {
+                if (actionInFlight.current === contextMenu) actionInFlight.current = null
                 if (spinnerTimer !== null) clearTimeout(spinnerTimer)
-                setLoadingItem(null)
-                closeContextMenu()
+                if (useUIStore.getState().contextMenu === contextMenu) {
+                  setLoadingItem(null)
+                  closeContextMenu()
+                }
               }
             }}
           >

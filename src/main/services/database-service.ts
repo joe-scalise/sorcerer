@@ -339,8 +339,34 @@ export class DatabaseService {
 
   private save(): void {
     if (!this.db) return
-    const data = this.db.export()
-    fs.writeFileSync(this.dbPath, Buffer.from(data))
+    // Export before touching disk, then replace the live file only after the
+    // complete snapshot has been flushed. A failed save must not truncate the
+    // last readable database. Keeping the temporary file beside it ensures the
+    // rename stays on one filesystem.
+    const data = Buffer.from(this.db.export())
+    const temporaryPath = `${this.dbPath}.${uuidv4()}.tmp`
+    let descriptor: number | undefined
+    let created = false
+    let replaced = false
+    try {
+      descriptor = fs.openSync(temporaryPath, 'wx', 0o600)
+      created = true
+      fs.writeFileSync(descriptor, data)
+      fs.fsyncSync(descriptor)
+      fs.closeSync(descriptor)
+      descriptor = undefined
+      // Close before replacing for Windows. Never remove the destination as a
+      // fallback: a sharing violation should leave the old snapshot intact.
+      fs.renameSync(temporaryPath, this.dbPath)
+      replaced = true
+    } finally {
+      if (descriptor !== undefined) {
+        try { fs.closeSync(descriptor) } catch { /* preserve the save error */ }
+      }
+      if (created && !replaced) {
+        try { fs.unlinkSync(temporaryPath) } catch { /* preserve the save error */ }
+      }
+    }
   }
 
   // Project operations
@@ -919,7 +945,7 @@ export class DatabaseService {
   // Quick Notes operations
   getQuickNote(parentId: string, parentType: string): any | undefined {
     if (!this.db) return undefined
-    const stmt = this.db.prepare('SELECT * FROM quick_notes WHERE parent_id = ? AND parent_type = ?')
+    const stmt = this.db.prepare('SELECT * FROM quick_notes WHERE parent_id = ? AND parent_type = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1')
     stmt.bind([parentId, parentType])
     const result = stmt.step() ? stmt.getAsObject() : undefined
     stmt.free()
@@ -928,10 +954,13 @@ export class DatabaseService {
 
   saveQuickNote(id: string, parentId: string, parentType: string, content: string): void {
     if (!this.db) return
+    // Separate windows may both load an empty note and generate their own ID.
+    // Reuse the persisted identity so later saves cannot leave competing rows.
+    const existing = this.getQuickNote(parentId, parentType)
     this.db.run(
       `INSERT OR REPLACE INTO quick_notes (id, parent_id, parent_type, content, updated_at)
        VALUES (?, ?, ?, ?, strftime('%s','now'))`,
-      [id, parentId, parentType, content]
+      [existing?.id ?? id, parentId, parentType, content]
     )
     this.save()
   }

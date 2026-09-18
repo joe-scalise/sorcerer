@@ -12,6 +12,7 @@ import { gravatarUrl } from '../SidebarFooter'
 import { Tooltip } from '../Tooltip'
 import { DialogSelect } from '../DialogSelect'
 import { useProviders } from '../../hooks/useProviders'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 
 type SettingsTab = 'profile' | 'appearance' | 'sessions' | 'providers' | 'git' | 'remote' | 'briefing' | 'general' | 'keybindings'
 
@@ -1395,15 +1396,7 @@ export function SettingsDialog() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
 
   const open = activeDialog === 'settings'
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDialog()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, closeDialog])
+  const dialogRef = useDialogFocus(open, closeDialog)
 
   if (!open) return null
 
@@ -1417,10 +1410,10 @@ export function SettingsDialog() {
       ref={overlayRef}
       onClick={(e) => { if (e.target === overlayRef.current) closeDialog() }}
     >
-      <div className={`settings-dialog ${dialogClosing ? 'dialog--closing' : ''}`}>
+      <div id="settings-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" tabIndex={-1} className={`settings-dialog ${dialogClosing ? 'dialog--closing' : ''}`}>
         <div className="dialog-header">
-          <h2 className="dialog-title">Settings</h2>
-          <button className="dialog-close" onClick={closeDialog}>
+          <h2 id="settings-dialog-title" className="dialog-title">Settings</h2>
+          <button className="dialog-close" onClick={closeDialog} aria-label="Close settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -1429,11 +1422,12 @@ export function SettingsDialog() {
         </div>
 
         <div className="settings-body">
-          <nav className="settings-nav">
+          <nav className="settings-nav" aria-label="Settings sections">
             {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 className={`settings-nav-item ${effectiveTab === tab.id ? 'settings-nav-item--active' : ''}`}
+                aria-current={effectiveTab === tab.id ? 'page' : undefined}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="settings-nav-icon">{tab.icon}</span>

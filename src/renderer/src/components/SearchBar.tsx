@@ -15,12 +15,14 @@ export function SearchBar() {
           className="search-input"
           type="text"
           placeholder="Search..."
+          aria-label="Search projects, sessions, and agents"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         {searchQuery ? (
           <button
             className="search-clear"
+            aria-label="Clear search"
             onClick={() => { setSearchQuery(''); inputRef.current?.focus() }}
           >
             &times;
