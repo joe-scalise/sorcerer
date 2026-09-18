@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="Theme.SorcererRemote" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">@color/sorcerer_primary</item>
+    <item name="colorOnPrimary">@color/sorcerer_on_primary</item>
+    <item name="colorSecondary">@color/sorcerer_secondary</item>
+    <item name="android:colorBackground">@color/sorcerer_background</item>
+    <item name="colorOnBackground">@color/sorcerer_on_background</item>
+    <item name="colorSurface">@color/sorcerer_surface</item>
+    <item name="colorSurfaceContainer">@color/sorcerer_surface_container</item>
+    <item name="colorOnSurface">@color/sorcerer_on_surface</item>
+    <item name="colorOnSurfaceVariant">@color/sorcerer_on_surface_variant</item>
+    <item name="colorError">@color/sorcerer_error</item>
+    <item name="android:fontFamily">sans</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowActionModeOverlay">true</item>
+  </style>
+</resources>

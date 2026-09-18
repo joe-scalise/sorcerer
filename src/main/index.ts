@@ -12,6 +12,14 @@ import { registerIPC } from './ipc/handlers'
 import { syncWorktrees, checkResumeFailed, canRecoverSessionByCwd, persistCodexSessionIdentity, markSessionResumeState, reconcileCodexSessions, persistSessionExitSummary, resolveSessionWorkingDirectory, resolveCodexExitThreadIdentity, extractCodexThreadIdFromOutput, codexThreadBelongsToCwd } from './ipc/shared-handlers'
 import { AgentOrchestrator } from './services/agent-orchestrator'
 import { refreshProviders as refreshProviderRegistry } from './services/provider-registry'
+import { isExternalWebUrl, secureWindowContents } from './window-security'
+
+// Install before any BrowserWindow is created so popouts share the same boundary.
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() === 'window') {
+    secureWindowContents(contents, (url) => shell.openExternal(url))
+  }
+})
 
 // On macOS/Linux, Electron doesn't inherit the user's shell PATH.
 // Fix process.env.PATH so spawned processes (e.g. 'claude') can be found.
@@ -390,12 +398,6 @@ async function createWindow(): Promise<void> {
     mainWindow = null
   })
 
-  // Open external links in browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
   setImmediate(() => {
     const startupTask = (async () => {
       if (isShuttingDown) return
@@ -702,7 +704,10 @@ ipcMain.on('window:maximize', () => {
 })
 ipcMain.on('window:close', () => mainWindow?.close())
 ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false)
-ipcMain.handle('window:openExternal', (_e, url: string) => shell.openExternal(url))
+ipcMain.handle('window:openExternal', (_e, url: string) => {
+  if (!isExternalWebUrl(url)) throw new Error('Only HTTP and HTTPS links can be opened')
+  return shell.openExternal(url)
+})
 ipcMain.handle('window:openPath', (_e, p: string) => shell.openPath(p))
 ipcMain.on('window:setTitleBarOverlay', (_e, options: { color: string; symbolColor: string }) => {
   if (process.platform !== 'darwin') {

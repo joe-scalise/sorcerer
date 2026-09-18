@@ -1,5 +1,32 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+export interface RemoteStatus {
+  running: boolean
+  port: string
+  bindAddress: string
+  advertisedHost: string
+  token: string
+}
+
+export interface RemotePairingCode {
+  code: string
+  expiresAt: number
+  protocolVersion: number
+  scheme: 'http'
+  host: string
+  port: number
+  deepLink: string
+}
+
+export interface PairedDevice {
+  id: string
+  name: string
+  scopes: string[]
+  createdAt: number
+  lastSeenAt: number | null
+  revokedAt: number | null
+}
+
 const api = {
   project: {
     list: () => ipcRenderer.invoke('project:list'),
@@ -230,12 +257,18 @@ const api = {
   },
 
   remote: {
-    status: () => ipcRenderer.invoke('remote:status'),
-    enable: () => ipcRenderer.invoke('remote:enable'),
-    disable: () => ipcRenderer.invoke('remote:disable'),
-    regenerateToken: () => ipcRenderer.invoke('remote:regenerate-token'),
-    updateConfig: (config: { port?: number; bindAddress?: string }) =>
-      ipcRenderer.invoke('remote:update-config', config),
+    status: () => ipcRenderer.invoke('remote:status') as Promise<RemoteStatus>,
+    enable: () => ipcRenderer.invoke('remote:enable') as Promise<{ port: number; bindAddress: string; token: string }>,
+    disable: () => ipcRenderer.invoke('remote:disable') as Promise<void>,
+    regenerateToken: () => ipcRenderer.invoke('remote:regenerate-token') as Promise<string>,
+    updateConfig: (config: { port?: number; bindAddress?: string; advertisedHost?: string }) =>
+      ipcRenderer.invoke('remote:update-config', config) as Promise<void>,
+    createPairingCode: (advertisedHost?: string) =>
+      ipcRenderer.invoke('remote:create-pairing-code', advertisedHost) as Promise<RemotePairingCode>,
+    listPairedDevices: () =>
+      ipcRenderer.invoke('remote:list-paired-devices') as Promise<PairedDevice[]>,
+    revokePairedDevice: (deviceId: string) =>
+      ipcRenderer.invoke('remote:revoke-paired-device', deviceId) as Promise<boolean>,
     remoteSessionIds: () =>
       ipcRenderer.invoke('remote:remoteSessionIds') as Promise<string[]>
   },

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="sorcerer_primary">#6D3DEB</color>
+  <color name="sorcerer_on_primary">#FFFFFF</color>
+  <color name="sorcerer_secondary">#006A6A</color>
+  <color name="sorcerer_background">#FCF8FF</color>
+  <color name="sorcerer_on_background">#1C1B20</color>
+  <color name="sorcerer_surface">#FCF8FF</color>
+  <color name="sorcerer_surface_container">#F2ECF7</color>
+  <color name="sorcerer_on_surface">#1C1B20</color>
+  <color name="sorcerer_on_surface_variant">#49454F</color>
+  <color name="sorcerer_error">#BA1A1A</color>
+  <color name="launcher_background">#171126</color>
+  <color name="launcher_accent">#A98BFF</color>
+  <color name="launcher_spark">#66E6E3</color>
+</resources>

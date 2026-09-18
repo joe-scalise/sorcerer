@@ -11,6 +11,7 @@ import { FileWatcherService } from '../services/file-watcher-service'
 import { getTerminalOutputTail } from '../services/terminal-output-utils'
 import { getProviderRunner } from '../services/provider-runners'
 import { getDefaultProviderId, listProviders as listProviderRegistry, refreshProviders as refreshProviderRegistry, resolveLaunchModel } from '../services/provider-registry'
+import { isSafeAutomaticallyAdvertisedIpv4 } from '../server/remote-network'
 
 // ── Services interface ──────────────────────────────────────
 
@@ -2751,18 +2752,13 @@ export function getUserInfo(): { username: string; homedir: string } {
 
 export function getNetworkIp(): string {
   const interfaces = os.networkInterfaces()
-  let fallback: string | null = null
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       if (iface.family !== 'IPv4' || iface.internal) continue
-      // Prefer private LAN ranges: 10.x, 172.16-31.x, 192.168.x
-      const a = iface.address
-      if (a.startsWith('192.168.') || a.startsWith('10.') ||
-          (a.startsWith('172.') && (() => { const oct = parseInt(a.split('.')[1]); return oct >= 16 && oct <= 31 })())) {
-        return a
-      }
-      if (!fallback) fallback = a
+      // Never silently advertise a public interface in an HTTP pairing link.
+      // VPNs using RFC1918 or carrier-grade-NAT space remain discoverable.
+      if (isSafeAutomaticallyAdvertisedIpv4(iface.address)) return iface.address
     }
   }
-  return fallback || '127.0.0.1'
+  return '127.0.0.1'
 }

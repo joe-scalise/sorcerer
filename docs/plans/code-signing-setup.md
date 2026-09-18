@@ -1,18 +1,18 @@
 # Code Signing Setup Guide
 
-Sorcerer uses **Azure Trusted Signing** (Windows) and **Apple Developer ID + Notarization** (macOS) to eliminate SmartScreen and Gatekeeper warnings for end users.
+Desktop signing is optional in the current release pipeline. A successful build or draft release does **not** establish that an installer is signed or notarized. Verify the exact downloadable artifacts before making those claims.
 
-Both signing flows are integrated into the CI release workflow (`.github/workflows/release.yml`) and skip silently when credentials are not configured, so local dev builds are unaffected.
+- **Windows:** `scripts/sign-windows.js` is an unused helper. `package.json` does not connect it to electron-builder or configure Azure signing. Adding Azure secrets or installing the CLI extension alone does not enable signing. Treat Windows releases as unsigned until a signing integration is implemented and verified.
+- **macOS:** the workflow conditionally imports a Developer ID certificate, and `build.afterSign` invokes `scripts/notarize-macos.js`. The hook skips notarization when the Apple ID or app-specific password is absent. These credentials are optional; successful packaging is not proof of Developer ID signing or notarization.
+- **Android:** its independent release workflow requires signing credentials and verifies the APK signature before publication.
+
+Signing establishes publisher identity and artifact integrity. It does not guarantee the absence of operating-system reputation prompts; see [Microsoft's SmartScreen guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
 
 ---
 
-## Estimated Cost
+## Enrollment and pricing
 
-| Platform | Service | Cost |
-|----------|---------|------|
-| macOS | Apple Developer Program | $99/year |
-| Windows | Azure Trusted Signing | $10/month (~$120/year) |
-| **Total** | | **~$220/year** |
+Check current [Apple Developer Program enrollment](https://developer.apple.com/programs/enroll/) and [Azure Artifact Signing information](https://learn.microsoft.com/en-us/azure/artifact-signing/overview) before purchasing or configuring signing services. This guide does not enable either service automatically.
 
 ---
 
@@ -22,7 +22,7 @@ Both signing flows are integrated into the CI release workflow (`.github/workflo
 
 - Go to https://developer.apple.com/programs/
 - Enroll as an individual or organization ($99/year)
-- Enrollment takes 24-48 hours for approval
+- Allow time for Apple's enrollment and identity checks.
 
 ### 2. Create a Developer ID Application Certificate
 
@@ -75,13 +75,13 @@ Go to your repo → Settings → Secrets and variables → Actions → New repos
 
 ### Verification
 
-After the next tagged release, check the CI logs for:
+For a release intended to be notarized, require a Developer ID signing identity and all five secrets above, then check the build logs for:
 ```
 [notarize-macos] Notarizing: .../Sorcerer.app
 [notarize-macos] Notarization complete
 ```
 
-You can verify locally on a Mac:
+Verify the downloaded app on a Mac; log messages alone are insufficient:
 ```bash
 spctl --assess --verbose=4 --type execute "Sorcerer.app"
 # Should output: accepted, source=Notarized Developer ID
@@ -92,155 +92,193 @@ codesign --verify --deep --strict "Sorcerer.app"
 
 ---
 
-## Windows Setup
+## Windows Setup (future integration)
 
-### 1. Create an Azure Account
+Windows signing is not currently wired into the desktop build. The existing
+`scripts/sign-windows.js` helper and workflow Azure environment variables are
+preparatory code, not a working signing contract. Do not add credentials expecting
+that helper to run automatically.
 
-- Go to https://portal.azure.com
-- Create a free account or use an existing one
-- A pay-as-you-go subscription is required for Trusted Signing
+Before enabling signing:
 
-### 2. Set Up Azure Trusted Signing
+1. Choose a public-distribution signing service and complete its identity validation.
+   Public Trust and Private Trust have different purposes; consult
+   [Microsoft's trust model documentation](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-trust-models).
+2. Implement the integration supported by the repository's installed builder version.
+   For electron-builder 26, see its [Windows signing documentation](https://www.electron.build/v26/docs/features/code-signing/code-signing-win/).
+   Review the existing helper before deciding whether to use or replace it.
+3. Scope signing credentials to a protected release context and make an intentionally
+   signed build fail when credentials or signing are incomplete.
+4. Verify both the packaged application executable and downloaded installer, including
+   their expected publisher identity, before advertising a signed release.
 
-1. In Azure Portal, search for **"Trusted Signing"** (formerly "Code Signing")
-2. Click **Create** → choose subscription, resource group, region
-3. Pricing tier: select the standard tier (~$10/month)
+On Windows, inspect the actual release candidate:
 
-### 3. Complete Identity Validation
+```powershell
+Get-AuthenticodeSignature '.\Sorcerer-1.8.0-win-x64.exe' |
+  Format-List Status, StatusMessage, SignerCertificate
+```
 
-1. In your Trusted Signing resource, go to **Identity Validation**
-2. Choose **Private** (for a business/company) or **Public** (for verified publishers)
-3. For Private validation, you'll need:
-   - Legal business name
-   - Business address
-   - Business phone number
-   - Company website
-4. Microsoft will verify your identity (can take 1-7 business days)
+`Valid` is required for a signed-release claim. `NotSigned` must be disclosed as
+unsigned. Other results require investigation; a successful build is not a
+substitute for signature verification. Even a valid public signature does not
+promise immediate SmartScreen reputation.
 
-### 4. Create a Certificate Profile
+---
 
-1. After identity validation completes, go to **Certificate Profiles**
-2. Click **Create** → name it (e.g., "sorcerer-signing")
-3. Select your validated identity
-4. Choose profile type: **Private Trust** or **Public Trust**
-   - Public Trust = immediate SmartScreen reputation (recommended)
-5. Note the **profile name** — you'll need it for CI
+## Android Setup
 
-### 5. Note Your Account Details
+Sorcerer Remote is distributed as a directly installable APK. Android requires
+the same package ID and signing certificate for every future update, so create
+and back up the release key before publishing the first APK.
 
-From your Trusted Signing resource, collect:
-- **Endpoint URL**: Found on the Overview page (e.g., `https://eus.codesigning.azure.net`)
-- **Account name**: The name you gave the Trusted Signing resource
+The permanent package ID is `com.aetherci.sorcerer.remote`.
 
-### 6. Create a Service Principal for CI
+### 1. Generate the release key
 
-This gives GitHub Actions access to sign without interactive login.
+Use the JDK `keytool` command on a trusted machine:
 
 ```bash
-# Install Azure CLI if needed, then:
-az login
-
-# Create service principal
-az ad sp create-for-rbac \
-  --name "sorcerer-signing-ci" \
-  --role "Trusted Signing Certificate Profile Signer" \
-  --scopes "/subscriptions/{SUB_ID}/resourceGroups/{RG_NAME}/providers/Microsoft.CodeSigning/codeSigningAccounts/{ACCOUNT_NAME}"
+keytool -genkeypair -v \
+  -keystore sorcerer-remote.jks \
+  -alias sorcerer-remote \
+  -keyalg RSA \
+  -keysize 4096 \
+  -validity 10000
 ```
 
-This outputs:
-```json
-{
-  "appId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "displayName": "sorcerer-signing-ci",
-  "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "tenant": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-}
+Use strong, unique passwords. Store the keystore and its recovery information
+in at least two encrypted locations. Do not commit the keystore or passwords.
+Losing this key prevents installed copies from receiving normal updates.
+
+### 2. Encode the keystore for CI
+
+macOS or Linux:
+
+```bash
+base64 < sorcerer-remote.jks | tr -d '\n'
 ```
 
-Save these values — `appId` is your Client ID, `password` is your Client Secret, `tenant` is your Tenant ID.
+PowerShell:
 
-### 7. Add GitHub Actions Secrets
+```powershell
+[Convert]::ToBase64String(
+  [IO.File]::ReadAllBytes((Resolve-Path .\sorcerer-remote.jks))
+) | Set-Clipboard
+```
 
-Go to your repo → Settings → Secrets and variables → Actions → New repository secret:
+### 3. Protect the signing environment
+
+In the repository's **Settings → Environments**, create an environment named
+`android-release`. Before uploading the permanent key:
+
+- require at least one trusted reviewer and prevent self-review when available
+- restrict deployments to `main` and Android release tags matching
+  `android-v*`
+- keep the keystore secrets environment-scoped, not available to ordinary CI
+
+The workflow independently verifies that the release commit is contained in
+`main`. It builds and tests the unsigned APK in a read-only job, then waits at
+the protected environment before a separate job receives the signing secrets.
+
+### 4. Add Android environment secrets
 
 | Secret Name | Value |
 |-------------|-------|
-| `AZURE_TENANT_ID` | The `tenant` from step 6 |
-| `AZURE_CLIENT_ID` | The `appId` from step 6 |
-| `AZURE_CLIENT_SECRET` | The `password` from step 6 |
-| `AZURE_CODE_SIGNING_ENDPOINT` | Endpoint URL from step 5 (e.g., `https://eus.codesigning.azure.net`) |
-| `AZURE_CODE_SIGNING_ACCOUNT` | Your Trusted Signing account name from step 5 |
-| `AZURE_CODE_SIGNING_PROFILE` | Certificate profile name from step 4 |
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded keystore contents |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | `sorcerer-remote` |
+| `ANDROID_KEY_PASSWORD` | Private-key password |
 
-### Verification
+Add all four values as secrets on the protected `android-release` environment.
+The Android release workflow fails closed when signing credentials are absent;
+it never publishes an unsigned APK.
 
-After the next tagged release, check the CI logs for:
+### 5. Publish and verify
+
+Push an independent Android tag:
+
+```bash
+git tag android-v0.1.0
+git push origin android-v0.1.0
 ```
-[sign-windows] Signing: .../Sorcerer Setup 1.x.x.exe
-[sign-windows] Signed successfully: ...
+
+CI runs lint and unit tests, builds the signed APK, verifies its signature,
+records package metadata, and publishes both the APK and its SHA-256 checksum.
+Test both a clean install and an upgrade before announcing the release:
+
+```bash
+adb install Sorcerer-Remote-0.1.0.apk
+adb install -r Sorcerer-Remote-0.1.1.apk
 ```
 
-You can verify on Windows:
-```powershell
-# Right-click the .exe → Properties → Digital Signatures tab
-# Should show a valid signature with your organization name
-
-# Or via PowerShell:
-Get-AuthenticodeSignature "Sorcerer Setup 1.x.x.exe"
-# Status should be "Valid"
-```
+For distribution beyond personal ADB installs, register the package name and
+signing certificate through the
+[Android Developer Console](https://developer.android.com/developer-verification/guides/android-developer-console).
 
 ---
 
 ## How It Works in CI
 
-The release workflow (`.github/workflows/release.yml`) handles everything automatically:
+The desktop workflow (`.github/workflows/release.yml`) validates the release,
+rebuilds and checks native modules, packages platform installers, and collects
+checksums. Manual runs produce workflow artifacts; desktop tag runs stage a
+curated **draft** GitHub release for review before publication.
 
-1. **On tag push** (`v*`): CI triggers the release build
-2. **macOS runner**:
-   - Imports .p12 certificate into a temporary keychain
-   - electron-builder signs the .app with hardened runtime
-   - `scripts/notarize-macos.js` submits to Apple for notarization
-   - Notarization ticket is stapled to the .dmg
-3. **Windows runner**:
-   - Installs Azure CLI trusted signing extension
-   - electron-builder calls `scripts/sign-windows.js` for each binary
-   - Script authenticates with Azure and signs via Trusted Signing API
-4. **Release job**: Collects all artifacts and creates a GitHub Release
+On macOS, certificate import runs only when its secret is configured. The
+notarization hook requires Apple credentials; packaging without them may produce
+an unsigned or ad-hoc-signed app that is not notarized. On Windows, the optional
+Azure CLI setup does not connect the unused helper to electron-builder. Neither
+platform currently guarantees signed output merely because the build passes.
 
-### Without Credentials
+Android uses a separate `android-v*` workflow and requires its signing key. Its
+signing requirements do not imply desktop artifacts are signed.
 
-If secrets are not configured:
-- macOS: `identity` falls back to unsigned, notarization is skipped
-- Windows: Signing script detects missing env vars and skips
-- Builds still succeed — just unsigned (with SmartScreen/Gatekeeper warnings)
+### Desktop release disclosure checklist
 
----
+Before publishing the draft:
+
+- Inspect the exact downloaded Windows installer and macOS app, recording their
+  signature results and publisher identity where present.
+- For a notarized macOS claim, verify Gatekeeper acceptance and the notarization
+  ticket on the downloaded distribution; signing alone is insufficient.
+- State unsigned/not-notarized status in the curated release notes and keep the
+  README download guidance consistent. Do not describe an ad-hoc signature as
+  Developer ID signing.
+- Explain that SmartScreen or Gatekeeper may prompt or block launch. Do not promise
+  that signing removes every prompt, or tell users to disable system protection.
+- Verify the published checksum file against the installers and complete fresh
+  install and upgrade smoke checks before promoting the release.
+- Publish only after the draft's platform artifacts and disclosures have been reviewed.
+
+Suggested disclosure for a release verified to lack publisher signing:
+
+> Windows installers are unsigned. macOS builds are not Developer ID signed or
+> notarized. Your operating system may warn or block first launch. Download only
+> from this release and verify the provided checksums before deciding whether to
+> run it.
+
+Adjust that wording to the actual results for each platform; do not infer the
+signature status of one artifact from another.
 
 ## Troubleshooting
 
-### macOS: "The app is damaged and can't be opened"
-- The app was not properly notarized or the notarization ticket wasn't stapled
-- Check CI logs for notarization errors
-- Verify with: `spctl --assess --verbose=4 --type execute Sorcerer.app`
+### macOS signing or notarization is missing
 
-### macOS: Notarization fails with "The binary uses an SDK older than..."
-- Update Electron to a recent version
-- Ensure `hardenedRuntime: true` is set in build config
+Check certificate import, the Developer ID identity selected by electron-builder,
+and all Apple credentials. A message saying notarization was skipped means the
+release must not be described as notarized. Assess the downloaded app with
+`codesign --verify --deep --strict` and `spctl --assess --verbose=4 --type execute`;
+verify ticket stapling separately for the distribution artifact.
 
-### macOS: "code object is not signed at all"
-- The .p12 certificate may not be a "Developer ID Application" certificate
-- Check you're not using an iOS distribution cert by mistake
+### Windows installer is unsigned despite Azure secrets
 
-### Windows: SmartScreen still shows warning
-- Azure Trusted Signing with Public Trust profile should have immediate reputation
-- If using Private Trust, it may take time to build reputation
-- Verify the signature: right-click .exe → Properties → Digital Signatures
+This is expected with the current configuration: the helper is not wired into the
+builder. Implement and verify the integration described above before expecting
+signed output. Adding secrets alone is insufficient.
 
-### Windows: "az trustedsigning" command not found
-- The Azure CLI extension may not be installed: `az extension add --name trustedsigning`
-- Check the CI logs for the extension install step
+### Windows SmartScreen still shows a warning
 
-### General: Signing works in CI but not locally
-- Local builds intentionally skip signing when credentials aren't set
-- To test signing locally, export the required environment variables first
+First verify the signature and publisher on the downloaded installer. SmartScreen
+also evaluates reputation; a valid signature is not a guarantee that a prompt
+will disappear. Follow [Microsoft's developer guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).

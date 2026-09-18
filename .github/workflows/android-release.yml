@@ -1,0 +1,197 @@
+name: Android Release
+
+on:
+  push:
+    tags: [android-v*]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Android version (for example, 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
+    defaults:
+      run:
+        working-directory: android-client
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Require a release commit from main
+        shell: bash
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Android releases must point to a commit contained in main" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platforms;android-37.0 build-tools;36.0.0 platform-tools'
+          log-accepted-android-sdk-licenses: false
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${GITHUB_REF_NAME#android-v}"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use MAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          if [[ ( "$MAJOR" != "0" && "$MAJOR" == 0* ) ||
+                ( "$MINOR" != "0" && "$MINOR" == 0* ) ||
+                ( "$PATCH" != "0" && "$PATCH" == 0* ) ]]; then
+            echo "Version components must not contain leading zeroes" >&2
+            exit 1
+          fi
+          if (( ${#MAJOR} > 4 || ${#MINOR} > 3 || ${#PATCH} > 3 ||
+                MAJOR > 2100 || MINOR >= 1000 || PATCH >= 1000 )); then
+            echo "Version components are outside the supported range" >&2
+            exit 1
+          fi
+          VERSION_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+          if (( VERSION_CODE < 1 || VERSION_CODE > 2100000000 )); then
+            echo "Derived Android version code is outside the supported range" >&2
+            exit 1
+          fi
+
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test unsigned release APK
+        run: >-
+          ./gradlew --no-daemon clean lint testDebugUnitTest assembleRelease
+          -PversionName=${{ steps.version.outputs.name }}
+          -PversionCode=${{ steps.version.outputs.code }}
+
+      - name: Confirm unsigned release artifact
+        shell: bash
+        run: test -f app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Upload unsigned APK for isolated signing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sorcerer-remote-unsigned-${{ steps.version.outputs.name }}
+          path: android-client/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 1
+
+  sign-and-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: android-release
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android signing tools
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
+
+      - name: Download unsigned APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sorcerer-remote-unsigned-${{ needs.build.outputs.version_name }}
+          path: unsigned-apk
+
+      - name: Import Android signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PASSWORD" || \
+                -z "$ANDROID_KEY_ALIAS" || -z "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "All Android signing secrets are required" >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sorcerer-remote.jks"
+
+      - name: Sign and verify release artifact
+        id: artifact
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          NAME="Sorcerer-Remote-${{ needs.build.outputs.version_name }}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/sorcerer-remote.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$NAME" \
+            unsigned-apk/app-release-unsigned.apk
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$NAME"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$NAME" | head -n 5
+          sha256sum "$NAME" > "$NAME.sha256"
+          echo "apk=$NAME" >> "$GITHUB_OUTPUT"
+          echo "checksum=$NAME.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Remove imported signing key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/sorcerer-remote.jks"
+
+      - name: Upload signed Android release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sorcerer-remote-${{ needs.build.outputs.version_name }}
+          path: |
+            ${{ steps.artifact.outputs.apk }}
+            ${{ steps.artifact.outputs.checksum }}
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          generate_release_notes: true
+          make_latest: false
+          files: |
+            ${{ steps.artifact.outputs.apk }}
+            ${{ steps.artifact.outputs.checksum }}

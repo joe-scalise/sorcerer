@@ -9,13 +9,15 @@ export function DeleteAgentDialog() {
   const { agents, removeAgent } = useAgentStore()
   const { activeSessionId } = useSessionStore()
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const open = activeDialog === 'delete-agent'
   const agent = dialogTargetId ? agents.find((a) => a.id === dialogTargetId) : undefined
 
   const handleDelete = async () => {
-    if (!agent) return
+    if (!agent || deleting) return
     setDeleting(true)
+    setError(null)
     try {
       await removeAgent(agent.id)
       // Clear active session if it was the deleted agent
@@ -23,13 +25,18 @@ export function DeleteAgentDialog() {
         useSessionStore.setState({ activeSessionId: null })
       }
       closeDialog()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this agent. Please try again.')
     } finally {
       setDeleting(false)
     }
   }
 
   const handleClose = () => {
-    if (!deleting) closeDialog()
+    if (!deleting) {
+      setError(null)
+      closeDialog()
+    }
   }
 
   return (
@@ -46,6 +53,7 @@ export function DeleteAgentDialog() {
           Are you sure you want to delete <strong>{agent?.name}</strong>?
           This will stop the agent and remove its configuration.
         </p>
+        {error && <div className="dialog-error" role="alert">{error}</div>}
       </div>
       <DialogActions>
         <DialogButton onClick={handleClose} disabled={deleting}>Cancel</DialogButton>

@@ -96,6 +96,13 @@ export class WorktreeService {
     const repoName = path.basename(projectPath)
     const branch = `${repoName}/${sessionName}`
     const worktreePath = path.join(this.workspacesRoot, repoName, sessionName)
+    this.validateWorktreePath(worktreePath)
+
+    // A matching name can belong to another session (or another repository with
+    // the same basename). Never treat an existing workspace as disposable.
+    if (fs.existsSync(worktreePath)) {
+      throw new Error(`Workspace already exists for "${sessionName}". Choose a different session name to preserve its files.`)
+    }
 
     // Ensure parent directory exists
     const parentDir = path.dirname(worktreePath)
@@ -105,15 +112,6 @@ export class WorktreeService {
 
     // Prune stale worktree references (e.g. from deleted sessions)
     try { await git.raw(['worktree', 'prune']) } catch { /* ignore */ }
-
-    // If the worktree directory already exists on disk (stale), remove it
-    if (fs.existsSync(worktreePath)) {
-      try {
-        await git.raw(['worktree', 'remove', worktreePath, '--force'])
-      } catch {
-        forceRemoveDir(worktreePath)
-      }
-    }
 
     // Ensure HEAD is valid (empty repos have no commits, so HEAD is unresolvable)
     try {
@@ -133,14 +131,9 @@ export class WorktreeService {
       try {
         await git.raw(['worktree', 'add', worktreePath, branch])
       } catch (err2: any) {
-        // Branch is locked to a stale worktree — prune again, delete the branch, recreate
-        try {
-          await git.raw(['worktree', 'prune'])
-          await git.raw(['branch', '-D', branch])
-          await git.raw(['worktree', 'add', '-b', branch, worktreePath])
-        } catch (err3: any) {
-          throw new Error(`Failed to create worktree for branch "${branch}": ${err3.message}`)
-        }
+        // An attach failure does not prove the branch is stale. Its commits may
+        // be the user's only copy, so preserve it and surface the Git error.
+        throw new Error(`Could not use existing branch "${branch}". Choose a different session name. ${err2.message}`)
       }
     }
 
@@ -411,7 +404,7 @@ export class WorktreeService {
 
   async squashMergeToMain(projectPath: string, branch: string, sessionName: string): Promise<{ merged: boolean; error?: string }> {
     const git: SimpleGit = simpleGit(projectPath)
-    let needsStash = false
+    let squashStarted = false
 
     try {
       // Detect default branch
@@ -427,11 +420,12 @@ export class WorktreeService {
         }
       }
 
-      // Stash dirty changes on main so they don't block the merge
       const status = await git.status()
-      needsStash = status.modified.length > 0 || status.staged.length > 0 || status.deleted.length > 0 || status.renamed.length > 0
-      if (needsStash) {
-        await git.raw(['stash', 'push', '-m', `sorcerer-land: auto-stash before landing ${branch}`])
+      if (status.current !== defaultBranch) {
+        return { merged: false, error: `Check out ${defaultBranch} in the project repository before landing. The current checkout has been left unchanged.` }
+      }
+      if (!status.isClean()) {
+        return { merged: false, error: `Commit or stash changes in the project repository before landing onto ${defaultBranch}, including untracked files.` }
       }
 
       // Pull latest from remote so local main is up to date
@@ -450,6 +444,7 @@ export class WorktreeService {
 
       // Squash merge the branch
       try {
+        squashStarted = true
         await git.raw(['merge', '--squash', branch])
       } catch (err: any) {
         // merge --squash threw — clean up and report
@@ -469,6 +464,7 @@ export class WorktreeService {
       try {
         const message = `Land "${sessionName}"\n\nSquash-merged from branch ${branch}`
         await git.commit(message)
+        squashStarted = false
       } catch (err: any) {
         // Commit failed for unexpected reason — clean up
         try { await git.raw(['reset', '--hard']) } catch { /* ignore */ }
@@ -485,15 +481,13 @@ export class WorktreeService {
 
       return { merged: true }
     } catch (err: any) {
-      // Unexpected error — ensure we don't leave main in a dirty state
-      try { await git.raw(['reset', '--hard']) } catch { /* ignore */ }
+      // Only discard changes created by our squash, never pre-existing work
+      // when status inspection or an earlier prerequisite fails.
+      if (squashStarted) {
+        try { await git.raw(['reset', '--hard']) } catch { /* ignore */ }
+      }
       console.error('[squashMergeToMain] Failed:', err)
       return { merged: false, error: err?.message || 'Squash merge failed' }
-    } finally {
-      // Always restore stashed changes
-      if (needsStash) {
-        try { await git.raw(['stash', 'pop']) } catch { /* ignore — stash may have been consumed */ }
-      }
     }
   }
 

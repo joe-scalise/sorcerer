@@ -8,6 +8,7 @@ import { PTYService } from '../services/pty-service'
 import { DatabaseService } from '../services/database-service'
 import { WorktreeService } from '../services/worktree-service'
 import { FileWatcherService } from '../services/file-watcher-service'
+import { isExternalWebUrl } from '../window-security'
 import {
   HandlerServices,
   listProjects,
@@ -65,11 +66,41 @@ import {
   setSessionRemoteControl,
   setAgentRemoteControl
 } from './shared-handlers'
+import {
+  buildAndroidPairingIntent,
+  normalizePairingHost,
+  parseRemotePort
+} from '../server/remote-network'
 
-let globalApiServer: any = null
+interface RemoteApiServer {
+  start(): Promise<void>
+  stop(): void
+  isRunning(): boolean
+  getRemoteSessionIds(): string[]
+  setAuthToken?(token: string): void
+  createPairingCode?(ttlMs?: number): {
+    code: string
+    expiresAt: number
+    protocolVersion: number
+  }
+  listPairedDevices?(): unknown[]
+  revokePairedDevice?(deviceId: string): boolean
+}
 
-export function getGlobalApiServer(): any { return globalApiServer }
-export function setGlobalApiServer(server: any): void { globalApiServer = server }
+let globalApiServer: RemoteApiServer | null = null
+
+export function getGlobalApiServer(): RemoteApiServer | null { return globalApiServer }
+export function setGlobalApiServer(server: RemoteApiServer): void { globalApiServer = server }
+
+function getPairingHost(bindAddress: string, advertisedHost?: unknown): string {
+  if (advertisedHost !== undefined && typeof advertisedHost !== 'string') {
+    throw new Error('Phone address must be a string.')
+  }
+  const wildcardBind = bindAddress === '0.0.0.0' || bindAddress === '::'
+  const requestedHost = typeof advertisedHost === 'string' ? advertisedHost.trim() : ''
+  const candidate = wildcardBind ? requestedHost || getNetworkIp() : bindAddress
+  return normalizePairingHost(candidate)
+}
 
 export function registerIPC(
   ptyService: PTYService,
@@ -489,7 +520,10 @@ export function registerIPC(
 
     const url = await worktreeService.getRemoteUrl(project.path as string)
     if (url) {
-      shell.openExternal(url)
+      if (!isExternalWebUrl(url)) {
+        return { opened: false, error: 'The remote URL must use HTTP or HTTPS to open in a browser' }
+      }
+      await shell.openExternal(url)
       return { opened: true, url }
     }
     return { opened: false, error: 'No remote URL found' }
@@ -855,6 +889,7 @@ export function registerIPC(
       running: globalApiServer?.isRunning() ?? false,
       port: dbService.getSetting('remotePort') || '7437',
       bindAddress: dbService.getSetting('remoteBindAddress') || '127.0.0.1',
+      advertisedHost: dbService.getSetting('remoteAdvertisedHost') || '',
       token: dbService.getSetting('remoteAuthToken') || ''
     }
   })
@@ -863,7 +898,7 @@ export function registerIPC(
     const { ApiServer } = await import('../server/api-server')
     const { getOrCreateAuthToken } = await import('../server/auth')
 
-    const port = parseInt(dbService.getSetting('remotePort') || '7437')
+    const port = parseRemotePort(dbService.getSetting('remotePort') || '7437')
     const bindAddress = dbService.getSetting('remoteBindAddress') || '127.0.0.1'
     const authToken = getOrCreateAuthToken(dbService)
 
@@ -882,12 +917,105 @@ export function registerIPC(
   ipcMain.handle('remote:regenerate-token', async () => {
     const { regenerateAuthToken } = await import('../server/auth')
     const token = regenerateAuthToken(dbService)
+
+    // Token rotation must invalidate the old credential immediately. Older
+    // ApiServer implementations did not observe the value written to settings
+    // until the next app restart, so prefer the live update API and retain a
+    // restart fallback for compatibility.
+    if (globalApiServer?.isRunning()) {
+      if (globalApiServer.setAuthToken) {
+        globalApiServer.setAuthToken(token)
+      } else {
+        const { ApiServer } = await import('../server/api-server')
+        const port = parseRemotePort(dbService.getSetting('remotePort') || '7437')
+        const bindAddress = dbService.getSetting('remoteBindAddress') || '127.0.0.1'
+        globalApiServer.stop()
+        globalApiServer = new ApiServer(services, { port, bindAddress, authToken: token })
+        try {
+          await globalApiServer.start()
+        } catch (error) {
+          dbService.setSetting('remoteEnabled', 'false')
+          throw error
+        }
+      }
+    }
+
     return token
   })
 
-  ipcMain.handle('remote:update-config', (_event, config: { port?: number; bindAddress?: string }) => {
-    if (config.port !== undefined) dbService.setSetting('remotePort', String(config.port))
-    if (config.bindAddress !== undefined) dbService.setSetting('remoteBindAddress', config.bindAddress)
+  ipcMain.handle('remote:update-config', (_event, value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('Remote configuration must be an object.')
+    }
+    const config = value as Record<string, unknown>
+
+    const port = config.port === undefined ? undefined : parseRemotePort(config.port, 1024)
+    const bindAddress = config.bindAddress
+    if (
+      bindAddress !== undefined &&
+      (typeof bindAddress !== 'string' || !['127.0.0.1', '0.0.0.0', '::1', '::'].includes(bindAddress))
+    ) {
+      throw new Error('Bind address must be a supported loopback or wildcard address.')
+    }
+    const advertisedHost = config.advertisedHost === undefined
+      ? undefined
+      : typeof config.advertisedHost === 'string' && config.advertisedHost.trim() === ''
+        ? ''
+        : normalizePairingHost(config.advertisedHost)
+
+    // Validate every supplied field before persisting any of them, so an
+    // invalid multi-field update cannot leave a partially changed config.
+    if (port !== undefined) dbService.setSetting('remotePort', String(port))
+    if (typeof bindAddress === 'string') dbService.setSetting('remoteBindAddress', bindAddress)
+    if (advertisedHost !== undefined) dbService.setSetting('remoteAdvertisedHost', advertisedHost)
+  })
+
+  ipcMain.handle('remote:create-pairing-code', (_event, advertisedHost?: unknown) => {
+    if (!globalApiServer?.isRunning() || !globalApiServer.createPairingCode) {
+      throw new Error('Start remote access before pairing an Android device.')
+    }
+
+    const bindAddress = dbService.getSetting('remoteBindAddress') || '127.0.0.1'
+    const host = getPairingHost(
+      bindAddress,
+      advertisedHost || dbService.getSetting('remoteAdvertisedHost')
+    )
+    const port = parseRemotePort(dbService.getSetting('remotePort') || '7437')
+    const pairing = globalApiServer.createPairingCode(2 * 60 * 1000)
+    // Pin QR dispatch to the production package. A bare custom-scheme URL can
+    // be claimed by another installed app, which could race to redeem the
+    // one-time code before Sorcerer Remote receives it.
+    const deepLink = buildAndroidPairingIntent({
+      scheme: 'http',
+      host,
+      port,
+      code: pairing.code,
+      protocolVersion: pairing.protocolVersion
+    })
+
+    return {
+      ...pairing,
+      scheme: 'http' as const,
+      host,
+      port,
+      deepLink
+    }
+  })
+
+  ipcMain.handle('remote:list-paired-devices', () => {
+    return dbService.listMobileDevices()
+  })
+
+  ipcMain.handle('remote:revoke-paired-device', (_event, deviceId: string) => {
+    if (typeof deviceId !== 'string' || !deviceId.trim()) {
+      throw new Error('A device ID is required.')
+    }
+
+    // The running server owns active mobile sockets, so let it apply the
+    // revocation immediately. The database fallback keeps device management
+    // available while remote access is stopped.
+    return globalApiServer?.revokePairedDevice?.(deviceId)
+      ?? dbService.revokeMobileDevice(deviceId)
   })
 
   // Electron-only: uses child_process execSync and Windows registry

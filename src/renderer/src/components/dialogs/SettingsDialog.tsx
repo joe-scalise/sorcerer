@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react'
+import QRCode from 'qrcode'
+import type { PairedDevice, RemotePairingCode } from '../../../../preload'
 import { getApi, isElectron } from '../../api/client'
 import { useUIStore } from '../../stores/useUIStore'
 import { useToastStore } from '../../stores/useToastStore'
 import {
-  TerminalIcon, GitBranchIcon, SettingsIcon, UserIcon, WifiIcon, CopyIcon, RefreshIcon, EyeIcon, EyeOffIcon, PaletteIcon, SmartphoneIcon, BotIcon, KeyboardIcon
+  TerminalIcon, GitBranchIcon, SettingsIcon, UserIcon, WifiIcon, CopyIcon, RefreshIcon, EyeIcon, EyeOffIcon, PaletteIcon, SmartphoneIcon, BotIcon, KeyboardIcon, TrashIcon
 } from '../icons'
 import { THEMES, getThemeById, applyTheme } from '../../themes'
 import { gravatarUrl } from '../SidebarFooter'
 import { Tooltip } from '../Tooltip'
 import { DialogSelect } from '../DialogSelect'
 import { useProviders } from '../../hooks/useProviders'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 
 type SettingsTab = 'profile' | 'appearance' | 'sessions' | 'providers' | 'git' | 'remote' | 'briefing' | 'general' | 'keybindings'
 
@@ -381,23 +384,84 @@ function GitTab() {
   )
 }
 
+type RemoteCopyTarget = 'token' | 'url' | 'rc' | 'pairing' | 'pairing-code'
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  return !normalized || normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || /^127(?:\.|$)/.test(normalized)
+}
+
+function hasValidHostSyntax(host: string): boolean {
+  const normalized = host.trim().replace(/^\[|\]$/g, '')
+  return normalized.length > 0 && normalized.length <= 253 && /^[a-zA-Z0-9._:%-]+$/.test(normalized)
+}
+
+function isValidPairingHost(host: string): boolean {
+  const normalized = host.trim().replace(/^\[|\]$/g, '')
+  return hasValidHostSyntax(normalized) &&
+    !isLoopbackHost(normalized) && normalized !== '0.0.0.0' && normalized !== '::'
+}
+
+function formatUrlHost(host: string): string {
+  const normalized = host.trim().replace(/^\[|\]$/g, '')
+  return normalized.includes(':') ? `[${normalized}]` : normalized
+}
+
+function formatPairingCountdown(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatDeviceTime(timestamp: number | null): string {
+  if (!timestamp) return 'Never connected'
+  return new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  })
+}
+
 function RemoteTab() {
   const { addToast } = useToastStore()
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [port, setPort] = useState('7437')
   const [bindAddress, setBindAddress] = useState('127.0.0.1')
-  const [lanIp, setLanIp] = useState('127.0.0.1')
+  const [advertisedHost, setAdvertisedHost] = useState('')
+  const [networkChecked, setNetworkChecked] = useState(false)
   const [token, setToken] = useState('')
   const [tokenVisible, setTokenVisible] = useState(false)
   const [toggling, setToggling] = useState(false)
-  const [copiedTarget, setCopiedTarget] = useState<'token' | 'url' | 'rc' | null>(null)
+  const [copiedTarget, setCopiedTarget] = useState<RemoteCopyTarget | null>(null)
+  const [pairing, setPairing] = useState<RemotePairingCode | null>(null)
+  const [pairingQr, setPairingQr] = useState('')
+  const [pairingBusy, setPairingBusy] = useState(false)
+  const [pairingError, setPairingError] = useState('')
+  const [now, setNow] = useState(Date.now())
+  const [devices, setDevices] = useState<PairedDevice[]>([])
+  const [devicesLoading, setDevicesLoading] = useState(true)
+  const [devicesError, setDevicesError] = useState('')
+  const [revokingDeviceId, setRevokingDeviceId] = useState<string | null>(null)
 
-  const flashCopied = (target: 'token' | 'url' | 'rc') => {
+  const flashCopied = (target: RemoteCopyTarget) => {
     setCopiedTarget(target)
     setTimeout(() => {
       setCopiedTarget((current) => current === target ? null : current)
     }, 1500)
+  }
+
+  const refreshDevices = async (showLoading = true) => {
+    if (showLoading) setDevicesLoading(true)
+    try {
+      const nextDevices = await getApi().remote.listPairedDevices()
+      setDevices(nextDevices)
+      setDevicesError('')
+    } catch (err: any) {
+      setDevicesError(err?.message || 'Could not load paired devices.')
+    } finally {
+      if (showLoading) setDevicesLoading(false)
+    }
   }
 
   const fetchStatus = async () => {
@@ -406,27 +470,100 @@ function RemoteTab() {
       setRunning(status.running)
       setPort(status.port)
       setBindAddress(status.bindAddress)
+      setAdvertisedHost((current) => status.advertisedHost || current)
       setToken(status.token)
     } catch {
-      // remote API may not be available
+      // Remote access is optional in browser-renderer builds.
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchStatus()
-    getApi().system.networkIp().then(setLanIp).catch(() => {})
+    void fetchStatus()
+    void refreshDevices()
+    getApi().system.networkIp()
+      .then((ip) => {
+        setAdvertisedHost((current) => current || ip)
+      })
+      .catch(() => {})
+      .finally(() => setNetworkChecked(true))
   }, [])
 
+  useEffect(() => {
+    if (!pairing) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [pairing])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!pairing) {
+      setPairingQr('')
+      return
+    }
+
+    setPairingQr('')
+
+    QRCode.toDataURL(pairing.deepLink, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 240,
+      color: { dark: '#111111', light: '#ffffff' }
+    }).then((dataUrl) => {
+      if (!cancelled) setPairingQr(dataUrl)
+    }).catch(() => {
+      if (!cancelled) {
+        setPairingQr('')
+        setPairingError('The pairing code is valid, but the QR could not be rendered. Copy the pairing link instead.')
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [pairing])
+
+  const pairingExpired = pairing !== null && now >= pairing.expiresAt
+
+  useEffect(() => {
+    if (!pairing || pairingExpired) return
+    const timer = window.setInterval(() => { void refreshDevices(false) }, 3000)
+    return () => window.clearInterval(timer)
+  }, [pairing?.code, pairingExpired])
+
+  const wildcardBind = bindAddress === '0.0.0.0' || bindAddress === '::'
+  const host = wildcardBind ? advertisedHost : bindAddress
+  const normalizedHost = host.trim().replace(/^\[|\]$/g, '')
+  const lanReachable = isValidPairingHost(host)
+  const formattedHost = formatUrlHost(host || bindAddress)
+  const hostDetected = hasValidHostSyntax(normalizedHost) && normalizedHost !== '0.0.0.0' && normalizedHost !== '::'
+  const accessUrl = hostDetected ? `http://${formattedHost}:${port}?token=${token}` : ''
+  const rcUrl = hostDetected ? `http://${formattedHost}:${port}/rc?token=${token}` : ''
+  const activeDevices = devices.filter((device) => device.revokedAt === null)
+
+  const copyText = (text: string, target: RemoteCopyTarget, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      flashCopied(target)
+    }).catch((err: any) => {
+      addToast(`Failed to copy ${label}: ${err?.message || 'Clipboard error'}`, 'error')
+    })
+  }
+
   const handleToggle = async (enable: boolean) => {
+    if (toggling) return
+    const parsedPort = parseInt(port)
+    if (enable && (!Number.isInteger(parsedPort) || parsedPort < 1024 || parsedPort > 65535)) {
+      addToast('Choose a port between 1024 and 65535.', 'error')
+      return
+    }
+
     setToggling(true)
     try {
       if (enable) {
-        // Save config before enabling
         await getApi().remote.updateConfig({
-          port: parseInt(port),
-          bindAddress
+          port: parsedPort,
+          bindAddress,
+          advertisedHost: wildcardBind ? advertisedHost : undefined
         })
         const result = await getApi().remote.enable()
         setRunning(true)
@@ -434,42 +571,95 @@ function RemoteTab() {
       } else {
         await getApi().remote.disable()
         setRunning(false)
+        setPairing(null)
+        setPairingError('')
       }
     } catch (err: any) {
-      addToast(`Failed to ${enable ? 'start' : 'stop'} remote desktop: ${err.message}`, 'error')
+      addToast(`Failed to ${enable ? 'start' : 'stop'} remote access: ${err.message}`, 'error')
     } finally {
       setToggling(false)
     }
   }
 
+  const handleBindAddressChange = async (nextValue: string) => {
+    const previousValue = bindAddress
+    setBindAddress(nextValue)
+    try {
+      await getApi().remote.updateConfig({ bindAddress: nextValue })
+    } catch (err: any) {
+      setBindAddress(previousValue)
+      addToast(`Failed to save bind address: ${err?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
+  const handlePortBlur = async () => {
+    const parsedPort = parseInt(port)
+    if (!Number.isInteger(parsedPort) || parsedPort < 1024 || parsedPort > 65535) {
+      addToast('Choose a port between 1024 and 65535.', 'error')
+      return
+    }
+    try {
+      await getApi().remote.updateConfig({ port: parsedPort })
+    } catch (err: any) {
+      addToast(`Failed to save port: ${err?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
+  const handleAdvertisedHostBlur = async () => {
+    const normalized = advertisedHost.trim().replace(/^\[|\]$/g, '')
+    if (normalized && !isValidPairingHost(normalized)) {
+      addToast('Enter a valid LAN IP address or DNS name for the Android connection.', 'error')
+      return
+    }
+    setAdvertisedHost(normalized)
+    try {
+      await getApi().remote.updateConfig({ advertisedHost: normalized })
+    } catch (err: any) {
+      addToast(`Failed to save phone address: ${err?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
+  const handleCreatePairing = async () => {
+    if (!running || !lanReachable || pairingBusy) return
+    setPairingBusy(true)
+    setPairingError('')
+    setPairingQr('')
+    try {
+      const nextPairing = await getApi().remote.createPairingCode(wildcardBind ? advertisedHost : undefined)
+      setPairing(nextPairing)
+      setNow(Date.now())
+    } catch (err: any) {
+      setPairingError(err?.message || 'Could not create a pairing code.')
+    } finally {
+      setPairingBusy(false)
+    }
+  }
+
   const handleRegenerate = async () => {
+    if (!token) return
+    if (!window.confirm('Regenerate the legacy browser token? Existing browser links will stop working immediately. Paired Android devices are not affected.')) return
     try {
       const newToken = await getApi().remote.regenerateToken()
       setToken(newToken)
+      addToast('Legacy browser token regenerated.', 'success')
     } catch (err: any) {
       addToast(`Failed to regenerate token: ${err.message}`, 'error')
     }
   }
 
-  const handleCopyToken = () => {
-    navigator.clipboard.writeText(token).then(() => {
-      flashCopied('token')
-    }).catch((err: any) => {
-      addToast(`Failed to copy token: ${err?.message || 'Clipboard error'}`, 'error')
-    })
-  }
-
-  const host = bindAddress === '0.0.0.0' ? lanIp : bindAddress
-  const accessUrl = `http://${host}:${port}?token=${token}`
-  const rcHost = host
-  const rcUrl = `http://${rcHost}:${port}/rc?token=${token}`
-
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(accessUrl).then(() => {
-      flashCopied('url')
-    }).catch((err: any) => {
-      addToast(`Failed to copy URL: ${err?.message || 'Clipboard error'}`, 'error')
-    })
+  const handleRevokeDevice = async (device: PairedDevice) => {
+    if (!window.confirm(`Revoke access for ${device.name || 'this Android device'}?`)) return
+    setRevokingDeviceId(device.id)
+    try {
+      const revoked = await getApi().remote.revokePairedDevice(device.id)
+      if (!revoked) throw new Error('The device was already revoked or no longer exists.')
+      await refreshDevices(false)
+      addToast(`${device.name || 'Android device'} revoked.`, 'success')
+    } catch (err: any) {
+      addToast(`Failed to revoke device: ${err?.message || 'Unknown error'}`, 'error')
+    } finally {
+      setRevokingDeviceId(null)
+    }
   }
 
   if (loading) {
@@ -480,8 +670,11 @@ function RemoteTab() {
     <>
       <SectionTitle>Server</SectionTitle>
 
-      <SettingRow label="Enable remote desktop" description="Start an HTTP API server for full browser-based access to Sorcerer">
-        <Toggle checked={running} onChange={handleToggle} label="Enable remote desktop" />
+      <SettingRow
+        label="Enable remote access"
+        description={toggling ? 'Applying server changes…' : 'Allow trusted browsers and paired Android devices to connect'}
+      >
+        <Toggle checked={running} onChange={handleToggle} label="Enable remote access" />
       </SettingRow>
 
       {running && (
@@ -489,50 +682,44 @@ function RemoteTab() {
           <div className="settings-remote-preview">
             <div className="settings-remote-preview-header">
               <span className="settings-status-dot" />
-              <span>Server running</span>
+              <span>Server running on {formattedHost}:{port}</span>
             </div>
             <div className="settings-remote-preview-url-row">
-              <code className="settings-remote-preview-url">{`http://${host}:${port}?token=${tokenVisible ? token : '\u2022'.repeat(8)}`}</code>
-              <button className="settings-copy-inline-btn" type="button" onClick={handleCopyUrl} title={copiedTarget === 'url' ? 'Copied' : 'Copy URL'}>
+              <code className="settings-remote-preview-url">{`http://${formattedHost}:${port}?token=${tokenVisible ? token : '\u2022'.repeat(8)}`}</code>
+              <button className="settings-copy-inline-btn" type="button" disabled={!accessUrl} onClick={() => accessUrl && copyText(accessUrl, 'url', 'browser URL')} title={accessUrl ? 'Copy browser URL' : 'No reachable network address detected'}>
                 {copiedTarget === 'url' ? 'Copied' : <CopyIcon style={{ width: 13, height: 13 }} />}
               </button>
             </div>
             <span className="settings-remote-preview-hint">
-              Open this URL in any browser on your network for full remote desktop access to Sorcerer.
+              Full browser interface. Use only on a trusted private network or encrypted VPN.
             </span>
           </div>
 
-          <div className="settings-remote-preview" style={{ marginTop: 8 }}>
+          <div className="settings-remote-preview">
             <div className="settings-remote-preview-header">
-              <SmartphoneIcon style={{ width: 14, height: 14, opacity: 0.6 }} />
-              <span>Remote Control</span>
+              <SmartphoneIcon style={{ width: 14, height: 14, opacity: 0.7 }} />
+              <span>Lightweight browser remote</span>
             </div>
             <div className="settings-remote-preview-url-row">
-              <code className="settings-remote-preview-url">{`http://${rcHost}:${port}/rc?token=${tokenVisible ? token : '\u2022'.repeat(8)}`}</code>
-              <button className="settings-copy-inline-btn" type="button" onClick={() => {
-                navigator.clipboard.writeText(rcUrl).then(() => {
-                  flashCopied('rc')
-                }).catch((err: any) => {
-                  addToast(`Failed to copy URL: ${err?.message || 'Clipboard error'}`, 'error')
-                })
-              }} title="Copy URL">
+              <code className="settings-remote-preview-url">{`http://${formattedHost}:${port}/rc?token=${tokenVisible ? token : '\u2022'.repeat(8)}`}</code>
+              <button className="settings-copy-inline-btn" type="button" disabled={!rcUrl} onClick={() => rcUrl && copyText(rcUrl, 'rc', 'remote URL')} title={rcUrl ? 'Copy remote URL' : 'No reachable network address detected'}>
                 {copiedTarget === 'rc' ? 'Copied' : <CopyIcon style={{ width: 13, height: 13 }} />}
               </button>
             </div>
             <span className="settings-remote-preview-hint">
-              Lightweight mobile interface — check session status and send messages from your phone.
+              Legacy browser link for session status and terminal interaction. Android pairing below never uses this token.
             </span>
           </div>
         </>
       )}
 
-      <SectionTitle>Configuration</SectionTitle>
-      <SettingRow label="Port" description="Port the API server listens on">
+      <SectionTitle>Network</SectionTitle>
+      <SettingRow label="Port" description="Port the remote server listens on">
         <input
           className="settings-input"
           value={port}
-          onChange={(e) => setPort(e.target.value)}
-          onBlur={() => getApi().remote.updateConfig({ port: parseInt(port) })}
+          onChange={(event) => setPort(event.target.value)}
+          onBlur={() => { void handlePortBlur() }}
           disabled={running}
           type="number"
           min={1024}
@@ -540,53 +727,194 @@ function RemoteTab() {
           style={{ width: 100 }}
         />
       </SettingRow>
-      <SettingRow label="Bind address" description="Network interface to listen on (127.0.0.1 = local only, 0.0.0.0 = all)">
+      <SettingRow label="Reachability" description="Android requires Private network; This computer only blocks other devices">
         <DialogSelect
           value={bindAddress}
-          onChange={(nextValue) => {
-            setBindAddress(nextValue)
-            getApi().remote.updateConfig({ bindAddress: nextValue })
-          }}
+          onChange={(nextValue) => { void handleBindAddressChange(nextValue) }}
           disabled={running}
-          style={{ width: 200 }}
+          style={{ width: 230 }}
           options={[
-            { value: '127.0.0.1', label: '127.0.0.1 (localhost only)' },
-            { value: '0.0.0.0', label: '0.0.0.0 (all interfaces)' }
+            { value: '127.0.0.1', label: 'This computer only (127.0.0.1)' },
+            { value: '0.0.0.0', label: 'Private network (0.0.0.0)' }
           ]}
         />
       </SettingRow>
 
-      <SectionTitle>Authentication</SectionTitle>
-      <SettingRow label="Auth token" description="Bearer token required for all API requests">
+      {wildcardBind && (
+        <SettingRow label="Phone address" description="Address encoded in pairing links; change it if a VPN or virtual adapter was detected">
+          <input
+            className="settings-input"
+            value={advertisedHost}
+            onChange={(event) => {
+              setAdvertisedHost(event.target.value)
+              setPairing(null)
+              setPairingError('')
+            }}
+            onBlur={() => { void handleAdvertisedHostBlur() }}
+            placeholder="192.168.1.20 or host name"
+            spellCheck={false}
+            style={{ width: 230 }}
+          />
+        </SettingRow>
+      )}
+
+      {!lanReachable && (
+        <div className="settings-remote-notice settings-remote-notice--warning">
+          <strong>{running ? 'Android cannot reach this server yet' : 'Android pairing needs a private-network address'}</strong>
+          <span>
+            {running
+              ? 'Turn off remote access, choose Private network above, then start it again.'
+              : networkChecked && wildcardBind
+                ? 'Connect this computer to your LAN or VPN, then refresh Settings before pairing.'
+                : 'Choose Private network above, then start remote access. Pairing links are never created for 127.0.0.1.'}
+          </span>
+        </div>
+      )}
+
+      {lanReachable && (
+        <div className="settings-remote-notice settings-remote-notice--info">
+          <strong>Android address</strong>
+          <code>{`http://${formattedHost}:${port}`}</code>
+          <span>HTTP pairing is unencrypted. Use only a trusted LAN or encrypted VPN—never shared or public Wi-Fi.</span>
+        </div>
+      )}
+
+      <SectionTitle>Android companion</SectionTitle>
+
+      {running && lanReachable ? (
+        <div className="settings-pairing-card">
+          <div className="settings-pairing-heading">
+            <div>
+              <span className="settings-pairing-title">Pair a device</span>
+              <span className="settings-remote-preview-hint">Codes work once and expire after two minutes.</span>
+            </div>
+            <button className="settings-pairing-primary" type="button" onClick={() => { void handleCreatePairing() }} disabled={pairingBusy}>
+              <RefreshIcon style={{ width: 14, height: 14 }} />
+              {pairingBusy ? 'Creating…' : pairing ? 'Refresh code' : 'Create pairing code'}
+            </button>
+          </div>
+
+          {pairingError && <div className="settings-pairing-error">{pairingError}</div>}
+
+          {pairing ? (
+            <div className={`settings-pairing-content ${pairingExpired ? 'settings-pairing-content--expired' : ''}`}>
+              <div className="settings-pairing-qr-wrap">
+                {pairingQr ? (
+                  <img className="settings-pairing-qr" src={pairingQr} alt="Scan to pair Sorcerer Remote" />
+                ) : (
+                  <div className="settings-pairing-qr settings-pairing-qr--placeholder">QR unavailable</div>
+                )}
+                {pairingExpired && <span className="settings-pairing-expired-label">Expired</span>}
+              </div>
+              <div className="settings-pairing-details">
+                <div className="settings-pairing-status">
+                  <span className={`settings-status-dot ${pairingExpired ? 'settings-status-dot--expired' : ''}`} />
+                  <strong>{pairingExpired ? 'Pairing code expired' : `Expires in ${formatPairingCountdown(pairing.expiresAt - now)}`}</strong>
+                </div>
+                <div className="settings-pairing-code-row">
+                  <span>One-time code</span>
+                  <code>{pairing.code}</code>
+                </div>
+                <div className="settings-pairing-actions">
+                  <button
+                    className="settings-browse-btn"
+                    type="button"
+                    disabled={pairingExpired}
+                    onClick={() => copyText(pairing.code, 'pairing-code', 'one-time code')}
+                  >
+                    <CopyIcon style={{ width: 14, height: 14 }} />
+                    {copiedTarget === 'pairing-code' ? 'Copied code' : 'Copy code'}
+                  </button>
+                  <button
+                    className="settings-browse-btn"
+                    type="button"
+                    disabled={pairingExpired}
+                    onClick={() => copyText(pairing.deepLink, 'pairing', 'pairing link')}
+                  >
+                    <CopyIcon style={{ width: 14, height: 14 }} />
+                    {copiedTarget === 'pairing' ? 'Copied' : 'Copy pairing link'}
+                  </button>
+                  {pairingExpired && (
+                    <button className="settings-browse-btn" type="button" onClick={() => { void handleCreatePairing() }} disabled={pairingBusy}>
+                      <RefreshIcon style={{ width: 14, height: 14 }} />
+                      New code
+                    </button>
+                  )}
+                </div>
+                <span className="settings-remote-preview-hint">
+                  The QR contains this address and one-time code only—never your permanent browser token.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="settings-pairing-empty">
+              <SmartphoneIcon style={{ width: 22, height: 22 }} />
+              <span>Create a code, then scan it from Sorcerer Remote on Android.</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="settings-pairing-empty settings-pairing-empty--blocked">
+          <SmartphoneIcon style={{ width: 22, height: 22 }} />
+          <span>{running ? 'Make the server reachable on your private network to pair Android.' : 'Configure a private-network address and start remote access to pair Android.'}</span>
+        </div>
+      )}
+
+      <div className="settings-section-heading-row">
+        <SectionTitle>Paired devices</SectionTitle>
+        <button className="settings-copy-inline-btn" type="button" onClick={() => { void refreshDevices() }} title="Refresh paired devices">
+          <RefreshIcon style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
+
+      {devicesLoading ? (
+        <div className="settings-device-empty">Loading paired devices…</div>
+      ) : devicesError ? (
+        <div className="settings-pairing-error">{devicesError}</div>
+      ) : activeDevices.length === 0 ? (
+        <div className="settings-device-empty">No Android devices are paired yet.</div>
+      ) : (
+        <div className="settings-device-list">
+          {activeDevices.map((device) => (
+            <div className="settings-device-row" key={device.id}>
+              <div className="settings-device-icon"><SmartphoneIcon /></div>
+              <div className="settings-device-info">
+                <span className="settings-device-name">{device.name || 'Android device'}</span>
+                <span className="settings-device-meta">
+                  {device.lastSeenAt ? `Last connected ${formatDeviceTime(device.lastSeenAt)}` : `Paired ${formatDeviceTime(device.createdAt)}`}
+                </span>
+              </div>
+              <button
+                className="settings-device-revoke"
+                type="button"
+                onClick={() => { void handleRevokeDevice(device) }}
+                disabled={revokingDeviceId === device.id}
+                title={`Revoke ${device.name || 'Android device'}`}
+              >
+                <TrashIcon style={{ width: 14, height: 14 }} />
+                {revokingDeviceId === device.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <SectionTitle>Legacy browser authentication</SectionTitle>
+      <SettingRow label="Browser token" description="Bearer token used by the two browser URLs above; Android devices use separate revocable credentials">
         <div className="settings-path-row">
           <input
             className="settings-input settings-input--path"
-            value={tokenVisible ? token : (token ? '\u2022'.repeat(24) : '(none)')}
+            value={tokenVisible ? token : (token ? '\u2022'.repeat(24) : '(created when enabled)')}
             readOnly
             style={{ fontFamily: tokenVisible ? 'monospace' : 'inherit' }}
           />
-          <button
-            className="settings-browse-btn"
-            type="button"
-            onClick={() => setTokenVisible(!tokenVisible)}
-            title={tokenVisible ? 'Hide token' : 'Show token'}
-          >
+          <button className="settings-browse-btn" type="button" onClick={() => setTokenVisible(!tokenVisible)} disabled={!token} title={tokenVisible ? 'Hide token' : 'Show token'}>
             {tokenVisible ? <EyeOffIcon style={{ width: 14, height: 14 }} /> : <EyeIcon style={{ width: 14, height: 14 }} />}
           </button>
-          <button
-            className="settings-browse-btn"
-            type="button"
-            onClick={handleCopyToken}
-            title="Copy token"
-          >
+          <button className="settings-browse-btn" type="button" onClick={() => copyText(token, 'token', 'token')} disabled={!token} title="Copy token">
             {copiedTarget === 'token' ? 'Copied' : <CopyIcon style={{ width: 14, height: 14 }} />}
           </button>
-          <button
-            className="settings-browse-btn"
-            type="button"
-            onClick={handleRegenerate}
-            title="Regenerate token"
-          >
+          <button className="settings-browse-btn" type="button" onClick={() => { void handleRegenerate() }} disabled={!token} title="Regenerate token">
             <RefreshIcon style={{ width: 14, height: 14 }} />
           </button>
         </div>
@@ -1068,19 +1396,13 @@ export function SettingsDialog() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
 
   const open = activeDialog === 'settings'
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDialog()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, closeDialog])
+  const dialogRef = useDialogFocus(open, closeDialog)
 
   if (!open) return null
 
-  const TabContent = TAB_CONTENT[activeTab]
+  const effectiveTab = !isElectron && activeTab === 'remote' ? 'general' : activeTab
+  const TabContent = TAB_CONTENT[effectiveTab]
+  const visibleTabs = isElectron ? TABS : TABS.filter((tab) => tab.id !== 'remote')
 
   return (
     <div
@@ -1088,10 +1410,10 @@ export function SettingsDialog() {
       ref={overlayRef}
       onClick={(e) => { if (e.target === overlayRef.current) closeDialog() }}
     >
-      <div className={`settings-dialog ${dialogClosing ? 'dialog--closing' : ''}`}>
+      <div id="settings-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" tabIndex={-1} className={`settings-dialog ${dialogClosing ? 'dialog--closing' : ''}`}>
         <div className="dialog-header">
-          <h2 className="dialog-title">Settings</h2>
-          <button className="dialog-close" onClick={closeDialog}>
+          <h2 id="settings-dialog-title" className="dialog-title">Settings</h2>
+          <button className="dialog-close" onClick={closeDialog} aria-label="Close settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -1100,11 +1422,12 @@ export function SettingsDialog() {
         </div>
 
         <div className="settings-body">
-          <nav className="settings-nav">
-            {TABS.map((tab) => (
+          <nav className="settings-nav" aria-label="Settings sections">
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`settings-nav-item ${activeTab === tab.id ? 'settings-nav-item--active' : ''}`}
+                className={`settings-nav-item ${effectiveTab === tab.id ? 'settings-nav-item--active' : ''}`}
+                aria-current={effectiveTab === tab.id ? 'page' : undefined}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="settings-nav-icon">{tab.icon}</span>

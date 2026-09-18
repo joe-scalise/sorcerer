@@ -5,7 +5,6 @@ import { getApi } from '../../api/client'
 import { useUIStore } from '../../stores/useUIStore'
 import { useProjectStore } from '../../stores/useProjectStore'
 import { useSessionStore } from '../../stores/useSessionStore'
-import { useToastStore } from '../../stores/useToastStore'
 import { useProviders } from '../../hooks/useProviders'
 import { resolveNewSessionProjectId } from '../../utils/newSessionDefaults'
 
@@ -13,7 +12,6 @@ export function NewSessionDialog() {
   const { activeDialog, dialogTargetId, closeDialog } = useUIStore()
   const { projects } = useProjectStore()
   const { createSession } = useSessionStore()
-  const { addToast } = useToastStore()
   const { detectedProviders, defaultProvider, getProvider, loading: providersLoading } = useProviders()
   const [name, setName] = useState('')
   const [projectId, setProjectId] = useState('')
@@ -22,6 +20,9 @@ export function NewSessionDialog() {
   const [remoteControl, setRemoteControl] = useState(false)
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
+  const [customModel, setCustomModel] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [gitError, setGitError] = useState<string | null>(null)
   const [gitInfo, setGitInfo] = useState<{ hasGit: boolean; hasCommits: boolean } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -46,28 +47,36 @@ export function NewSessionDialog() {
   }, [open, dialogTargetId])
 
   useEffect(() => {
+    let cancelled = false
+    setGitInfo(null)
+    setGitError(null)
+    setUseMainRepo(false)
     if (!effectiveProjectId || !open) {
-      setGitInfo(null)
       return
     }
-    getApi().project.checkGit(effectiveProjectId).then(setGitInfo)
+    getApi().project.checkGit(effectiveProjectId).then((info) => {
+      if (!cancelled) setGitInfo(info)
+    }).catch(() => {
+      if (!cancelled) setGitError('Could not check this project’s Git status. Select the project again or reopen this dialog to retry.')
+    })
+    return () => { cancelled = true }
   }, [effectiveProjectId, open])
 
   const isGitProject = gitInfo?.hasGit && gitInfo?.hasCommits
   const isEmptyGit = gitInfo?.hasGit && !gitInfo?.hasCommits
   const hasSuggestedModels = (selectedProvider?.models.length || 0) > 0
-  const isCustomModel = !!selectedProvider?.supportsModelOverride && !!model && !selectedProvider.models.includes(model)
-  const canSubmit = !!effectiveProjectId && !!name.trim() && !!selectedProvider && detectedProviders.length > 0 && !submitting
+  const isCustomModel = customModel || (!!selectedProvider?.supportsModelOverride && !!model && !selectedProvider.models.includes(model))
+  const canSubmit = !!project && !!gitInfo && !!name.trim() && !!selectedProvider && detectedProviders.length > 0 && !submitting
   const bypassHint =
     provider === 'claude'
-      ? 'Claude runs with --dangerously-skip-permissions.'
+      ? 'Claude skips permission prompts and can run tools without asking.'
       : provider === 'gemini'
-        ? 'Gemini runs with --yolo.'
+        ? 'Gemini automatically approves tool actions without asking.'
         : provider === 'codex'
-          ? 'Codex runs with --dangerously-bypass-approvals-and-sandbox.'
-          : 'Runs with the provider’s closest unattended mode.'
+          ? 'Codex skips approval prompts and disables sandbox restrictions.'
+          : 'Automatically approves tool actions where supported by this provider.'
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setName('')
     setProjectId('')
     setUseMainRepo(false)
@@ -75,29 +84,39 @@ export function NewSessionDialog() {
     setRemoteControl(false)
     setProvider('')
     setModel('')
+    setCustomModel(false)
+    setError(null)
+    setGitError(null)
     setGitInfo(null)
     closeDialog()
+  }
+
+  const handleClose = () => {
+    if (!submitting) resetAndClose()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!canSubmit) return
     setSubmitting(true)
+    setError(null)
     try {
       const result = await createSession(
         effectiveProjectId,
         name.trim(),
-        useMainRepo,
+        !!isGitProject && useMainRepo,
         bypassPermissions,
         remoteControl,
         selectedProvider.id,
-        selectedProvider.supportsModelOverride ? model : ''
+        selectedProvider.supportsModelOverride ? model.trim() : ''
       )
       if (!result?.session) {
-        addToast(result?.error || 'Failed to create session', 'error')
+        setError(result?.error || 'Failed to create session')
       } else {
-        handleClose()
+        resetAndClose()
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create session')
     } finally {
       setSubmitting(false)
     }
@@ -119,6 +138,7 @@ export function NewSessionDialog() {
   return (
     <Dialog open={open} onClose={handleClose} title="New Session">
       <form onSubmit={handleSubmit}>
+        <fieldset disabled={submitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <DialogField label="Project">
           {dialogTargetId ? (
             <div className="dialog-readonly">{project?.name || 'Unknown'}</div>
@@ -141,6 +161,7 @@ export function NewSessionDialog() {
               onChange={(nextValue) => {
                 const nextProvider = getProvider(nextValue)
                 setProvider(nextValue)
+                setCustomModel(false)
                 setModel(nextProvider?.supportsModelOverride ? nextProvider.defaultModel || nextProvider.models[0] || '' : '')
                 if (!nextProvider?.supportsRemoteControl) setRemoteControl(false)
               }}
@@ -159,9 +180,11 @@ export function NewSessionDialog() {
                     value={isCustomModel ? '__custom__' : model}
                     onChange={(nextValue) => {
                       if (nextValue === '__custom__') {
+                        setCustomModel(true)
                         if (!isCustomModel) setModel('')
                         return
                       }
+                      setCustomModel(false)
                       setModel(nextValue)
                     }}
                     options={[
@@ -178,6 +201,7 @@ export function NewSessionDialog() {
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
                       placeholder="Enter custom model"
+                      aria-label="Custom model"
                       style={{ marginTop: 8 }}
                     />
                   )}
@@ -203,7 +227,7 @@ export function NewSessionDialog() {
             Using bundled model suggestions. You can still enter any model manually.
           </div>
         )}
-        {detectedProviders.length === 0 && (
+        {!providersLoading && detectedProviders.length === 0 && (
           <div className="dialog-hint" style={{ marginTop: 4 }}>
             No supported providers were detected. Install a supported CLI or refresh Providers in Settings.
           </div>
@@ -236,7 +260,7 @@ export function NewSessionDialog() {
             checked={bypassPermissions}
             onChange={(e) => setBypassPermissions(e.target.checked)}
           />
-          Auto-accept permissions
+          Unattended mode
         </label>
         {bypassPermissions && (
           <div className="dialog-hint" style={{ marginTop: 4 }}>
@@ -254,10 +278,14 @@ export function NewSessionDialog() {
           </label>
         )}
         {hintText && <div className="dialog-hint">{hintText}</div>}
+        {effectiveProjectId && !gitInfo && !gitError && <div className="dialog-hint" role="status">Checking project Git status...</div>}
+        {gitError && <div className="dialog-error" role="alert">{gitError}</div>}
+        {error && <div className="dialog-error" role="alert">{error}</div>}
         <DialogActions>
           <DialogButton onClick={handleClose} disabled={submitting}>Cancel</DialogButton>
           <DialogButton variant="primary" type="submit" loading={submitting} disabled={!canSubmit}>Create Session</DialogButton>
         </DialogActions>
+        </fieldset>
       </form>
     </Dialog>
   )

@@ -7,6 +7,7 @@ export function ArchiveDialog() {
   const { activeDialog, dialogTargetId, closeDialog } = useUIStore()
   const { sessions, archiveSession } = useSessionStore()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const open = activeDialog === 'archive-session'
 
@@ -16,18 +17,28 @@ export function ArchiveDialog() {
   const targetName = targetSession?.name ?? 'this session'
 
   const handleConfirm = async () => {
-    if (!dialogTargetId) return
+    if (!dialogTargetId || loading) return
     setLoading(true)
+    setError(null)
     try {
       await archiveSession(dialogTargetId)
       closeDialog()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not archive this session. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
+  const handleClose = () => {
+    if (!loading) {
+      setError(null)
+      closeDialog()
+    }
+  }
+
   return (
-    <Dialog open={open} onClose={closeDialog} title="Archive session">
+    <Dialog open={open} onClose={handleClose} title="Archive session">
       <div className="dialog-confirm-body">
         <div className="dialog-confirm-icon dialog-confirm-icon--archive">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -42,9 +53,10 @@ export function ArchiveDialog() {
         <p className="dialog-confirm-subtext">
           The session process will be stopped. Work will be auto-committed and pushed. You can restore it later.
         </p>
+        {error && <div className="dialog-error" role="alert">{error}</div>}
       </div>
       <DialogActions>
-        <DialogButton onClick={closeDialog} disabled={loading}>Cancel</DialogButton>
+        <DialogButton onClick={handleClose} disabled={loading}>Cancel</DialogButton>
         <DialogButton variant="primary" onClick={handleConfirm} loading={loading}>Archive</DialogButton>
       </DialogActions>
     </Dialog>

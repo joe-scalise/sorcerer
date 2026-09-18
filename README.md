@@ -11,6 +11,9 @@ Grab the latest release for your platform:
 
 **[Download for Windows, macOS, and Linux](https://github.com/joe-scalise/sorcerer/releases/latest)**
 
+**Android companion:** Sideloadable Sorcerer Remote APKs use independent
+`android-v*` releases. See the [Android setup guide](docs/android.md).
+
 Requires a supported AI CLI tool installed and available on `PATH`, such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Gemini CLI, or Codex CLI.
 
 > **Authentication note:** Sorcerer runs multiple concurrent agent sessions. Consumer subscription accounts (Claude.ai Pro, Gemini Advanced, etc.) are not designed for this usage pattern — you should authenticate each CLI tool with an **API key** from the respective provider.
@@ -27,6 +30,7 @@ Requires a supported AI CLI tool installed and available on `PATH`, such as [Cla
 - **Session recovery** — Resume previous sessions, detect orphaned worktrees, recover from crashes
 - **Quick Notes** — Per-session scratchpad that persists across restarts
 - **Remote access** — Built-in HTTP + WebSocket server with token auth for browser-based access
+- **Android companion** — Pair a sideloaded, device-scoped remote-control app over a trusted LAN or VPN
 - **Cross-platform** — Windows, macOS, and Linux
 
 ## Permissions

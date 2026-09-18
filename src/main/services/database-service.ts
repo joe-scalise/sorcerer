@@ -4,6 +4,31 @@ import path from 'path'
 import os from 'os'
 import fs from 'fs'
 
+export interface MobileDeviceRecord {
+  id: string
+  name: string
+  platform: string | null
+  appVersion: string | null
+  scopes: string[]
+  createdAt: number
+  lastSeenAt: number | null
+  revokedAt: number | null
+}
+
+export interface MobileDeviceCredentialRecord extends MobileDeviceRecord {
+  tokenHash: string
+}
+
+export interface CreateMobileDeviceInput {
+  id: string
+  name: string
+  tokenHash: string
+  platform?: string | null
+  appVersion?: string | null
+  scopes: string[]
+  createdAt: number
+}
+
 export class DatabaseService {
   private db: SqlJsDatabase | null = null
   private dbPath: string
@@ -261,6 +286,26 @@ export class DatabaseService {
       );
     `)
 
+    // Paired mobile devices. Raw bearer tokens are never persisted; only their
+    // SHA-256 hashes are stored so a copied database cannot be used to connect.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS mobile_devices (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        platform TEXT,
+        app_version TEXT,
+        scopes TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER,
+        revoked_at INTEGER
+      );
+    `)
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_mobile_devices_token_hash
+      ON mobile_devices(token_hash);
+    `)
+
     this.save()
   }
 
@@ -294,8 +339,34 @@ export class DatabaseService {
 
   private save(): void {
     if (!this.db) return
-    const data = this.db.export()
-    fs.writeFileSync(this.dbPath, Buffer.from(data))
+    // Export before touching disk, then replace the live file only after the
+    // complete snapshot has been flushed. A failed save must not truncate the
+    // last readable database. Keeping the temporary file beside it ensures the
+    // rename stays on one filesystem.
+    const data = Buffer.from(this.db.export())
+    const temporaryPath = `${this.dbPath}.${uuidv4()}.tmp`
+    let descriptor: number | undefined
+    let created = false
+    let replaced = false
+    try {
+      descriptor = fs.openSync(temporaryPath, 'wx', 0o600)
+      created = true
+      fs.writeFileSync(descriptor, data)
+      fs.fsyncSync(descriptor)
+      fs.closeSync(descriptor)
+      descriptor = undefined
+      // Close before replacing for Windows. Never remove the destination as a
+      // fallback: a sharing violation should leave the old snapshot intact.
+      fs.renameSync(temporaryPath, this.dbPath)
+      replaced = true
+    } finally {
+      if (descriptor !== undefined) {
+        try { fs.closeSync(descriptor) } catch { /* preserve the save error */ }
+      }
+      if (created && !replaced) {
+        try { fs.unlinkSync(temporaryPath) } catch { /* preserve the save error */ }
+      }
+    }
   }
 
   // Project operations
@@ -709,6 +780,118 @@ export class DatabaseService {
   }
 
   // Settings operations
+  createMobileDevice(input: CreateMobileDeviceInput): MobileDeviceRecord {
+    if (!this.db) throw new Error('Database not initialized')
+    this.db.run(
+      `INSERT INTO mobile_devices
+       (id, name, token_hash, platform, app_version, scopes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.id,
+        input.name,
+        input.tokenHash,
+        input.platform || null,
+        input.appVersion || null,
+        JSON.stringify(input.scopes),
+        input.createdAt
+      ]
+    )
+    this.save()
+
+    const created = this.getMobileDeviceByTokenHash(input.tokenHash)
+    if (!created) throw new Error('Failed to create mobile device')
+    return this.toPublicMobileDevice(created)
+  }
+
+  getMobileDeviceByTokenHash(tokenHash: string): MobileDeviceCredentialRecord | undefined {
+    if (!this.db) return undefined
+    const stmt = this.db.prepare(
+      `SELECT id, name, token_hash, platform, app_version, scopes,
+              created_at, last_seen_at, revoked_at
+       FROM mobile_devices WHERE token_hash = ?`
+    )
+    stmt.bind([tokenHash])
+    const row = stmt.step() ? stmt.getAsObject() : undefined
+    stmt.free()
+    return row ? this.mapMobileDevice(row, true) as MobileDeviceCredentialRecord : undefined
+  }
+
+  listMobileDevices(): MobileDeviceRecord[] {
+    if (!this.db) return []
+    const stmt = this.db.prepare(
+      `SELECT id, name, platform, app_version, scopes,
+              created_at, last_seen_at, revoked_at
+       FROM mobile_devices ORDER BY created_at DESC`
+    )
+    const results: MobileDeviceRecord[] = []
+    while (stmt.step()) {
+      results.push(this.mapMobileDevice(stmt.getAsObject(), false))
+    }
+    stmt.free()
+    return results
+  }
+
+  touchMobileDevice(id: string, seenAt: number): void {
+    if (!this.db) return
+    this.db.run(
+      `UPDATE mobile_devices SET last_seen_at = ?
+       WHERE id = ? AND revoked_at IS NULL`,
+      [seenAt, id]
+    )
+    this.save()
+  }
+
+  revokeMobileDevice(id: string, revokedAt: number = Date.now()): boolean {
+    if (!this.db) return false
+    const existing = this.db.prepare(
+      'SELECT id FROM mobile_devices WHERE id = ? AND revoked_at IS NULL'
+    )
+    existing.bind([id])
+    const canRevoke = existing.step()
+    existing.free()
+    if (!canRevoke) return false
+
+    this.db.run(
+      `UPDATE mobile_devices SET revoked_at = ?
+       WHERE id = ? AND revoked_at IS NULL`,
+      [revokedAt, id]
+    )
+    this.save()
+    return true
+  }
+
+  private mapMobileDevice(
+    row: Record<string, unknown>,
+    includeCredential: boolean
+  ): MobileDeviceRecord | MobileDeviceCredentialRecord {
+    let scopes: string[] = []
+    try {
+      const parsed = JSON.parse(String(row.scopes || '[]'))
+      if (Array.isArray(parsed)) scopes = parsed.filter((scope): scope is string => typeof scope === 'string')
+    } catch {
+      scopes = []
+    }
+
+    const device: MobileDeviceRecord = {
+      id: String(row.id),
+      name: String(row.name),
+      platform: row.platform == null ? null : String(row.platform),
+      appVersion: row.app_version == null ? null : String(row.app_version),
+      scopes,
+      createdAt: Number(row.created_at),
+      lastSeenAt: row.last_seen_at == null ? null : Number(row.last_seen_at),
+      revokedAt: row.revoked_at == null ? null : Number(row.revoked_at)
+    }
+
+    if (!includeCredential) return device
+    return { ...device, tokenHash: String(row.token_hash) }
+  }
+
+  private toPublicMobileDevice(device: MobileDeviceCredentialRecord): MobileDeviceRecord {
+    const { tokenHash: _tokenHash, ...publicDevice } = device
+    return publicDevice
+  }
+
   private isSecret(key: string): boolean {
     return key.startsWith('apiKey_') || key === 'remoteAuthToken'
   }
@@ -762,7 +945,7 @@ export class DatabaseService {
   // Quick Notes operations
   getQuickNote(parentId: string, parentType: string): any | undefined {
     if (!this.db) return undefined
-    const stmt = this.db.prepare('SELECT * FROM quick_notes WHERE parent_id = ? AND parent_type = ?')
+    const stmt = this.db.prepare('SELECT * FROM quick_notes WHERE parent_id = ? AND parent_type = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1')
     stmt.bind([parentId, parentType])
     const result = stmt.step() ? stmt.getAsObject() : undefined
     stmt.free()
@@ -771,10 +954,13 @@ export class DatabaseService {
 
   saveQuickNote(id: string, parentId: string, parentType: string, content: string): void {
     if (!this.db) return
+    // Separate windows may both load an empty note and generate their own ID.
+    // Reuse the persisted identity so later saves cannot leave competing rows.
+    const existing = this.getQuickNote(parentId, parentType)
     this.db.run(
       `INSERT OR REPLACE INTO quick_notes (id, parent_id, parent_type, content, updated_at)
        VALUES (?, ?, ?, ?, strftime('%s','now'))`,
-      [id, parentId, parentType, content]
+      [existing?.id ?? id, parentId, parentType, content]
     )
     this.save()
   }

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Dialog, DialogField, DialogActions, DialogButton } from '../Dialog'
 import { useUIStore } from '../../stores/useUIStore'
 import { useProjectStore } from '../../stores/useProjectStore'
-import { useToastStore } from '../../stores/useToastStore'
 
 /** Extract the last folder segment from a path */
 function folderName(path: string): string {
@@ -14,51 +13,64 @@ function folderName(path: string): string {
 export function AddProjectDialog() {
   const { activeDialog, closeDialog } = useUIStore()
   const { addProject, addProjectByPath } = useProjectStore()
-  const { addToast } = useToastStore()
   const [nameOverride, setNameOverride] = useState('')
   const [path, setPath] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const open = activeDialog === 'add-project'
 
   // Derive name: user override wins, otherwise extract from path
   const derivedName = folderName(path)
-  const effectiveName = nameOverride || derivedName
+  const effectiveName = nameOverride.trim() || derivedName
   const canSubmit = !!path.trim() && !submitting
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setNameOverride('')
     setPath('')
+    setError(null)
     closeDialog()
   }
 
+  const handleClose = () => {
+    if (!submitting) resetAndClose()
+  }
+
   const handleBrowse = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
     try {
       const project = await addProject()
       if (project) {
         // If user browsed, the backend already added it with folder name.
         // If they had a name override, update it.
-        if (nameOverride && nameOverride !== project.name) {
-          await useProjectStore.getState().updateProject(project.id, { name: nameOverride })
+        if (nameOverride.trim() && nameOverride.trim() !== project.name) {
+          await useProjectStore.getState().updateProject(project.id, { name: nameOverride.trim() })
         }
-        handleClose()
+        resetAndClose()
       }
     } catch (err) {
-      addToast(`Failed: ${err}`, 'error')
+      setError(err instanceof Error ? err.message : 'Could not add this project.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!path.trim()) return
+    if (!canSubmit) return
     setSubmitting(true)
+    setError(null)
     try {
       const project = await addProjectByPath(path.trim(), effectiveName || undefined)
       if (project) {
-        handleClose()
+        resetAndClose()
+      } else {
+        setError('Could not add this folder. Check that the path exists and you have access, then try again.')
       }
     } catch (err) {
-      addToast(`Failed: ${err}`, 'error')
+      setError(err instanceof Error ? err.message : 'Could not add this project.')
     } finally {
       setSubmitting(false)
     }
@@ -67,6 +79,7 @@ export function AddProjectDialog() {
   return (
     <Dialog open={open} onClose={handleClose} title="Add Project">
       <form onSubmit={handleSubmit}>
+        <fieldset disabled={submitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <DialogField label="Path">
           <div className="dialog-path-row">
             <input
@@ -79,7 +92,7 @@ export function AddProjectDialog() {
               required
             />
             <button type="button" className="dialog-browse-btn" onClick={handleBrowse}>
-              Browse
+              Browse &amp; Add…
             </button>
           </div>
         </DialogField>
@@ -98,10 +111,12 @@ export function AddProjectDialog() {
         <div className="dialog-hint">
           Any folder works — git repos get worktree isolation and branch tracking.
         </div>
+        {error && <div className="dialog-error" role="alert">{error}</div>}
         <DialogActions>
           <DialogButton onClick={handleClose} disabled={submitting}>Cancel</DialogButton>
           <DialogButton variant="primary" type="submit" loading={submitting} disabled={!canSubmit}>Add Project</DialogButton>
         </DialogActions>
+        </fieldset>
       </form>
     </Dialog>
   )

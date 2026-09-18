@@ -3,46 +3,82 @@ name: Release
 on:
   push:
     tags: [v*]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+      notes: ${{ steps.metadata.outputs.notes }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate committed release metadata
+        id: metadata
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            node scripts/validate-release.cjs "$GITHUB_REF_NAME"
+          else
+            node scripts/validate-release.cjs
+          fi
+      - run: npm ci
+      - name: Verify types and production build
+        run: npm run verify
+      - name: Run regression tests
+        run: npm test
+      - name: Verify release tooling
+        run: node --test scripts/release-checks.cjs
+
   build:
+    needs: validate
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
+            arch: x64
             build_script: build:win
             artifact_glob: "dist/*.exe"
-          - os: macos-latest
+          - os: macos-15
+            arch: arm64
+            build_script: build:mac
+            artifact_glob: "dist/*.dmg"
+          - os: macos-15-intel
+            arch: x64
             build_script: build:mac
             artifact_glob: "dist/*.dmg"
           - os: ubuntu-latest
+            arch: x64
             build_script: build:linux
             artifact_glob: "dist/*.AppImage"
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
-      - name: Sync version from tag
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Setting version to $VERSION"
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-
       - name: Install Linux build tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 xvfb
 
       - name: Install libfuse2 (AppImage packaging)
         if: runner.os == 'Linux'
@@ -86,6 +122,9 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild
 
+      - name: Smoke test Electron native modules
+        run: npm run smoke:native
+
       - name: Build (macOS, retry transient packaging failures)
         if: runner.os == 'macOS'
         shell: bash
@@ -95,7 +134,7 @@ jobs:
           delay=15
           for attempt in $(seq 1 "$attempts"); do
             echo "macOS build attempt $attempt/$attempts"
-            if npm run ${{ matrix.build_script }} -- --publish never; then
+            if npm run ${{ matrix.build_script }} -- --${{ matrix.arch }} --publish never; then
               exit 0
             fi
             if [ "$attempt" -lt "$attempts" ]; then
@@ -121,7 +160,8 @@ jobs:
 
       - name: Build
         if: runner.os != 'macOS'
-        run: npm run ${{ matrix.build_script }} -- --publish never
+        shell: bash
+        run: npm run ${{ matrix.build_script }} -- --${{ matrix.arch }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing + notarization
@@ -136,25 +176,95 @@ jobs:
           AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CODE_SIGNING_PROFILE: ${{ secrets.AZURE_CODE_SIGNING_PROFILE }}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ runner.os }}
-          path: ${{ matrix.artifact_glob }}
+      - name: Smoke test packaged native dependencies
+        run: node scripts/smoke-native.cjs --packaged
 
-  release:
-    needs: build
+      - name: Configure Chromium sandbox for Linux CI smoke test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SANDBOX_PATH="$(realpath node_modules/electron/dist/chrome-sandbox)"
+          test "$SANDBOX_PATH" = "$GITHUB_WORKSPACE/node_modules/electron/dist/chrome-sandbox"
+          test -f "$SANDBOX_PATH"
+          sudo chown root:root -- "$SANDBOX_PATH"
+          sudo chmod 4755 -- "$SANDBOX_PATH"
+
+      - name: Smoke test packaged app boot and persistence
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a node scripts/smoke-app.cjs --packaged
+          else
+            node scripts/smoke-app.cjs --packaged
+          fi
+
+      - name: Upload app smoke screenshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: smoke-${{ runner.os }}-${{ matrix.arch }}
+          path: dist/smoke-*.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ runner.os }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 14
+
+  stage:
+    needs: [validate, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
+          node-version: 22
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
           path: artifacts
           merge-multiple: true
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - name: Verify complete installer set and generate checksums
+        run: node scripts/prepare-release-assets.cjs artifacts
+
+      - name: Upload complete release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          generate_release_notes: true
-          files: artifacts/*
+          name: Sorcerer-${{ needs.validate.outputs.tag }}-release-candidate
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      # Manual runs only produce downloadable workflow artifacts. Tags stage a
+      # draft for installer smoke testing and an explicit human publish action.
+      - name: Stage curated draft release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_NOTES: ${{ needs.validate.outputs.notes }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/releases.json"
+          RELEASE_STATE=$(node -e 'const releases = require(process.argv[1]).flat(); const release = releases.find(r => r.tag_name === process.env.RELEASE_TAG); console.log(release ? (release.draft ? "draft" : "published") : "missing")' "$RUNNER_TEMP/releases.json")
+          if [[ "$RELEASE_STATE" == "published" ]]; then
+            echo "Refusing to alter an already published release: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_STATE" == "missing" ]]; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Sorcerer $RELEASE_TAG" --notes-file "$RELEASE_NOTES"
+          else
+            gh release edit "$RELEASE_TAG" --draft --title "Sorcerer $RELEASE_TAG" --notes-file "$RELEASE_NOTES"
+          fi
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber

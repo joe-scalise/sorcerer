@@ -74,6 +74,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
       }))
     } catch (err) {
       console.error('[project-store] removeProject failed:', err)
+      throw err
     }
   },
 

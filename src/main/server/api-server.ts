@@ -1,4 +1,5 @@
 import http from 'http'
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { URL } from 'url'
@@ -59,6 +60,18 @@ import {
 import os from 'os'
 import { ScrollbackBuffer } from './scrollback'
 import { WebSocketHandler } from './ws-handler'
+import {
+  MobileAuthError,
+  MobileAuthService,
+  PairedDevice,
+  PairingCode
+} from './mobile-auth'
+import {
+  MOBILE_PROTOCOL_INFO,
+  MOBILE_SCOPES,
+  MobileRpcMethod,
+  validateMobileRpcRequest
+} from './mobile-contract'
 // In dev, read from disk for live reloading. In production, use inlined copy.
 import remoteControlHtmlInlined from './remote-control.html?raw'
 
@@ -88,6 +101,18 @@ const MIME_TYPES: Record<string, string> = {
   '.map': 'application/json'
 }
 
+export const MAX_REQUEST_BODY_BYTES = 64 * 1024
+
+class HttpRequestError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    public readonly code: string,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
 const REMOTE_CONTROL_ASSETS: Record<string, string> = {
   '/rc-assets/xterm.js': path.join('@xterm', 'xterm', 'lib', 'xterm.js'),
   '/rc-assets/xterm.css': path.join('@xterm', 'xterm', 'css', 'xterm.css'),
@@ -103,25 +128,48 @@ export class ApiServer {
   private _ptyOutputListener: ((sessionId: string, data: string) => void) | null = null
   private _ptyExitListener: ((sessionId: string, exitCode: number) => void) | null = null
   private dispatch: Record<string, (...args: any[]) => any>
+  private mobileDispatch: Record<MobileRpcMethod, (...args: any[]) => any>
+  private mobileAuth: MobileAuthService
 
   constructor(
     private services: HandlerServices,
     private config: ApiServerConfig
   ) {
     this.dispatch = this.buildDispatchMap()
+    this.mobileDispatch = this.buildMobileDispatchMap()
+    this.mobileAuth = new MobileAuthService(this.services.db)
   }
 
   // ── Lifecycle ─────────────────────────────────────────────
 
   async start(): Promise<void> {
-    this.httpServer = http.createServer((req, res) => this.handleRequest(req, res))
+    this.httpServer = http.createServer((req, res) => {
+      void this.handleRequest(req, res).catch((err) => {
+        if (!res.headersSent) this.handleRequestError(res, err)
+        else res.destroy()
+      })
+    })
 
     // Create WebSocket handler (hooks into upgrade events on the HTTP server)
     this.wsHandler = new WebSocketHandler(
       this.httpServer,
       this.services.pty,
       this.scrollback,
-      this.config.authToken
+      {
+        authenticateQueryToken: (token) => this.authenticateLegacyToken(token),
+        authenticateMessageToken: (token) => {
+          const legacy = this.authenticateLegacyToken(token)
+          if (legacy) return legacy
+          const mobile = this.mobileAuth.authenticateToken(token)
+          return mobile
+            ? {
+                kind: 'mobile' as const,
+                deviceId: mobile.deviceId,
+                scopes: mobile.scopes
+              }
+            : null
+        }
+      }
     )
 
     // Hook into PTY output → feed scrollback buffer + broadcast to WS clients
@@ -155,6 +203,8 @@ export class ApiServer {
   }
 
   stop(): void {
+    this.mobileAuth.invalidatePairingCodes()
+
     // Unhook PTY listeners
     if (this._ptyOutputListener) this.services.pty.removeOutputListener(this._ptyOutputListener)
     if (this._ptyExitListener) this.services.pty.removeExitListener(this._ptyExitListener)
@@ -188,6 +238,28 @@ export class ApiServer {
     return this.wsHandler?.getRemoteSessionIds() ?? []
   }
 
+  /** Rotate the legacy browser credential without restarting the HTTP server. */
+  setAuthToken(token: string): void {
+    if (!token) throw new Error('Auth token cannot be empty')
+    this.config.authToken = token
+    this.wsHandler?.disconnectLegacyClients()
+  }
+
+  createPairingCode(ttlMs?: number): PairingCode {
+    if (!this.isRunning()) throw new Error('Remote access must be running to create a pairing code')
+    return this.mobileAuth.createPairingCode(ttlMs)
+  }
+
+  listPairedDevices(): PairedDevice[] {
+    return this.mobileAuth.listPairedDevices()
+  }
+
+  revokePairedDevice(deviceId: string): boolean {
+    const revoked = this.mobileAuth.revokePairedDevice(deviceId)
+    if (revoked) this.wsHandler?.disconnectDevice(deviceId)
+    return revoked
+  }
+
   // ── Request routing ───────────────────────────────────────
 
   private async handleRequest(
@@ -205,30 +277,62 @@ export class ApiServer {
       return
     }
 
-    const url = new URL(req.url || '/', `http://${req.headers.host}`)
-
-    // Auth check for /api/* routes
-    if (url.pathname.startsWith('/api/')) {
-      const token = req.headers.authorization?.replace('Bearer ', '')
-      if (token !== this.config.authToken) {
-        res.writeHead(401, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'Unauthorized' }))
-        return
-      }
+    let url: URL
+    try {
+      // Route matching must not parse an attacker-controlled Host header.
+      url = new URL(req.url || '/', 'http://localhost')
+    } catch {
+      this.sendError(res, 400, 'invalid_url', 'Invalid request URL')
+      return
     }
 
-    // RPC endpoint
+    if (req.method === 'GET' && url.pathname === '/api/mobile/v1/protocol') {
+      this.sendJson(res, 200, MOBILE_PROTOCOL_INFO)
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/mobile/v1/pair') {
+      await this.handlePairing(req, res)
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/mobile/v1/rpc') {
+      const principal = this.authenticateRequest(req)
+      if (
+        !principal ||
+        (!principal.scopes.has('*') && !principal.scopes.has(MOBILE_SCOPES.rpc))
+      ) {
+        this.sendError(res, 401, 'unauthorized', 'Unauthorized')
+        return
+      }
+      await this.handleMobileRpc(req, res)
+      return
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/rpc') {
-      await this.handleRpc(req, res)
+      const token = this.getBearerToken(req)
+      if (!token || !this.authenticateLegacyToken(token)) {
+        this.sendError(res, 401, 'unauthorized', 'Unauthorized')
+        return
+      }
+      await this.handleLegacyRpc(req, res)
+      return
+    }
+
+    if (url.pathname.startsWith('/api/')) {
+      this.sendError(res, 404, 'not_found', 'Not Found')
       return
     }
 
     // Remote Control — lightweight mobile page
     if (url.pathname === '/rc') {
       const token = url.searchParams.get('token')
-      if (token !== this.config.authToken) {
+      // Query authentication is retained only for existing browser bookmarks.
+      // New clients put the device token in the URL fragment, which is never
+      // sent to this HTTP server, and authenticate subsequent requests directly.
+      if (token !== null && !this.authenticateLegacyToken(token)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' })
-        res.end('Unauthorized — append ?token=YOUR_TOKEN to the URL')
+        res.end('Unauthorized')
         return
       }
       res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' })
@@ -387,38 +491,239 @@ export class ApiServer {
     }
   }
 
-  private async handleRpc(
+  private buildMobileDispatchMap(): Record<MobileRpcMethod, (...args: any[]) => any> {
+    const s = this.services
+    return {
+      'project:list': () => listProjects(s).map((project: any) => ({
+        id: project.id,
+        name: project.name
+      })),
+      'session:list': (projectId?: string) => {
+        const projects = new Map(
+          listProjects(s).map((project: any) => [project.id, project.path])
+        )
+        return listSessions(s, projectId).map((session: any) => ({
+          id: session.id,
+          project_id: session.project_id,
+          name: session.name,
+          branch: session.branch,
+          status: session.status,
+          type: session.type,
+          provider: session.provider,
+          is_main_repo: session.worktree_path === projects.get(session.project_id)
+        }))
+      },
+      'session:resume': async (sessionId: string) => {
+        await resumeSession(s, sessionId)
+        return { ok: true }
+      },
+      'session:restart': async (sessionId: string) => {
+        await restartSession(s, sessionId)
+        return { ok: true }
+      },
+      'agent:list': () => listAgents(s).map((agent: any) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status,
+        provider: agent.provider
+      })),
+      'agent:resume': async (agentId: string) => {
+        await resumeAgent(s, agentId)
+        return { ok: true }
+      },
+      'agent:restart': async (agentId: string) => {
+        await restartAgent(s, agentId)
+        return { ok: true }
+      },
+      'theme:get': () => getSetting(s, 'theme')
+    }
+  }
+
+  private async handleLegacyRpc(
     req: http.IncomingMessage,
     res: http.ServerResponse
   ): Promise<void> {
     try {
-      const body = await this.readBody(req)
-      const { method, args } = JSON.parse(body)
+      const { method, args } = await this.readRpcRequest(req)
+
+      // The HTTP bridge is not a trusted desktop IPC boundary. Never allow a
+      // remote bearer token to read secret-backed settings or mutate settings.
+      if (method === 'settings:set' || (method === 'settings:get' && args[0] !== 'theme')) {
+        this.sendError(res, 403, 'setting_not_allowed', 'Setting is not available remotely')
+        return
+      }
 
       const handler = this.dispatch[method]
 
       if (!handler) {
-        res.writeHead(404, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: `Unknown method: ${method}` }))
+        this.sendError(res, 404, 'method_not_found', `Unknown method: ${method}`)
         return
       }
 
       const result = await handler(...(args || []))
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ result }))
-    } catch (err: any) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: err.message || 'Internal server error' }))
+      this.sendJson(res, 200, { result })
+    } catch (err) {
+      this.handleRequestError(res, err)
+    }
+  }
+
+  private async handleMobileRpc(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    try {
+      const { method, params } = await this.readMobileRpcRequest(req)
+      const decision = validateMobileRpcRequest(method, params)
+      if (!decision.allowed) {
+        const status = decision.reason === 'method_not_allowed' ? 403 : 400
+        this.sendError(res, status, decision.reason, 'RPC request is not allowed')
+        return
+      }
+
+      const result = await this.mobileDispatch[decision.method](...decision.args)
+      this.sendJson(res, 200, { result })
+    } catch (err) {
+      this.handleRequestError(res, err)
+    }
+  }
+
+  private async handlePairing(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    try {
+      const body = await this.readJsonBody(req)
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw new HttpRequestError(400, 'invalid_request', 'Request body must be an object')
+      }
+      const result = this.mobileAuth.exchangePairingCode({
+        code: (body as any).code,
+        deviceName: (body as any).deviceName,
+        platform: (body as any).platform,
+        appVersion: (body as any).appVersion
+      })
+      this.sendJson(res, 200, result)
+    } catch (err) {
+      this.handleRequestError(res, err)
+    }
+  }
+
+  private async readRpcRequest(
+    req: http.IncomingMessage
+  ): Promise<{ method: string; args: any[] }> {
+    const body = await this.readJsonBody(req)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new HttpRequestError(400, 'invalid_request', 'Request body must be an object')
+    }
+    const { method, args = [] } = body as Record<string, unknown>
+    if (typeof method !== 'string' || !Array.isArray(args)) {
+      throw new HttpRequestError(400, 'invalid_request', 'RPC method and args are required')
+    }
+    return { method, args }
+  }
+
+  private async readMobileRpcRequest(
+    req: http.IncomingMessage
+  ): Promise<{ method: string; params: unknown }> {
+    const body = await this.readJsonBody(req)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new HttpRequestError(400, 'invalid_request', 'Request body must be an object')
+    }
+    const { method, params } = body as Record<string, unknown>
+    if (typeof method !== 'string' || params === undefined) {
+      throw new HttpRequestError(400, 'invalid_request', 'RPC method and params are required')
+    }
+    return { method, params }
+  }
+
+  private async readJsonBody(req: http.IncomingMessage): Promise<unknown> {
+    const body = await this.readBody(req)
+    try {
+      return JSON.parse(body)
+    } catch {
+      throw new HttpRequestError(400, 'invalid_json', 'Request body is not valid JSON')
     }
   }
 
   private readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = []
-      req.on('data', (chunk) => chunks.push(chunk))
-      req.on('end', () => resolve(Buffer.concat(chunks).toString()))
-      req.on('error', reject)
+      let size = 0
+      let settled = false
+
+      const contentLength = Number(req.headers['content-length'] || 0)
+      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+        req.resume()
+        reject(new HttpRequestError(413, 'request_too_large', 'Request body is too large'))
+        return
+      }
+
+      req.on('data', (chunk: Buffer) => {
+        if (settled) return
+        size += chunk.length
+        if (size > MAX_REQUEST_BODY_BYTES) {
+          settled = true
+          req.resume()
+          reject(new HttpRequestError(413, 'request_too_large', 'Request body is too large'))
+          return
+        }
+        chunks.push(chunk)
+      })
+      req.on('end', () => {
+        if (!settled) resolve(Buffer.concat(chunks).toString())
+      })
+      req.on('error', (err) => {
+        if (!settled) reject(err)
+      })
     })
+  }
+
+  private getBearerToken(req: http.IncomingMessage): string | null {
+    const match = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)
+    return match?.[1] || null
+  }
+
+  private authenticateLegacyToken(token: string): { kind: 'legacy'; scopes: Set<string> } | null {
+    return secureTokenEqual(token, this.config.authToken)
+      ? { kind: 'legacy', scopes: new Set(['*']) }
+      : null
+  }
+
+  private authenticateRequest(req: http.IncomingMessage): {
+    kind: 'legacy' | 'mobile'
+    scopes: ReadonlySet<string>
+  } | null {
+    const token = this.getBearerToken(req)
+    if (!token) return null
+    const legacy = this.authenticateLegacyToken(token)
+    if (legacy) return legacy
+    return this.mobileAuth.authenticateToken(token)
+  }
+
+  private sendJson(res: http.ServerResponse, statusCode: number, body: unknown): void {
+    res.writeHead(statusCode, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    })
+    res.end(JSON.stringify(body))
+  }
+
+  private sendError(
+    res: http.ServerResponse,
+    statusCode: number,
+    code: string,
+    message: string
+  ): void {
+    this.sendJson(res, statusCode, { error: message, code })
+  }
+
+  private handleRequestError(res: http.ServerResponse, err: unknown): void {
+    if (err instanceof HttpRequestError || err instanceof MobileAuthError) {
+      this.sendError(res, err.statusCode, err.code, err.message)
+      return
+    }
+    console.error('[api-server] Request failed:', err)
+    this.sendError(res, 500, 'internal_error', 'Internal server error')
   }
 
   // ── Dev proxy to Vite ────────────────────────────────────
@@ -509,4 +814,13 @@ export class ApiServer {
     res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' })
     fs.createReadStream(filePath).pipe(res)
   }
+}
+
+function secureTokenEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual)
+  const expectedBuffer = Buffer.from(expected)
+  return (
+    actualBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(actualBuffer, expectedBuffer)
+  )
 }

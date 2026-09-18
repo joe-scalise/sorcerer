@@ -9,6 +9,7 @@ export function DeleteDialog() {
   const { projects, removeProject } = useProjectStore()
   const { sessions, deleteSession } = useSessionStore()
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const open = activeDialog === 'delete-session'
 
@@ -31,8 +32,9 @@ export function DeleteDialog() {
   }
 
   const handleConfirm = async () => {
-    if (!dialogTargetId) return
+    if (!dialogTargetId || deleting) return
     setDeleting(true)
+    setError(null)
     try {
       if (targetType === 'project') {
         await removeProject(dialogTargetId)
@@ -40,13 +42,18 @@ export function DeleteDialog() {
         await deleteSession(dialogTargetId)
       }
       closeDialog()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this item. Please try again.')
     } finally {
       setDeleting(false)
     }
   }
 
   const handleClose = () => {
-    if (!deleting) closeDialog()
+    if (!deleting) {
+      setError(null)
+      closeDialog()
+    }
   }
 
   return (
@@ -66,6 +73,7 @@ export function DeleteDialog() {
             : ' The git worktree and branch will be cleaned up.'}
         </p>
         <p className="dialog-confirm-subtext">Changes will be auto-committed and pushed before deletion.</p>
+        {error && <div className="dialog-error" role="alert">{error}</div>}
       </div>
       <DialogActions>
         <DialogButton onClick={handleClose} disabled={deleting}>Cancel</DialogButton>

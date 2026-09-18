@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:id="@+id/root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical">
+
+  <com.google.android.material.appbar.MaterialToolbar
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorSurfaceContainer"
+    android:minHeight="?attr/actionBarSize"
+    app:title="@string/pair_title"
+    app:titleTextColor="?attr/colorOnSurface" />
+
+  <ScrollView
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:fillViewport="true">
+
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:paddingStart="24dp"
+      android:paddingTop="24dp"
+      android:paddingEnd="24dp"
+      android:paddingBottom="32dp">
+
+      <ImageView
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center_horizontal"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_sorcerer_mark" />
+
+      <TextView
+        style="@style/TextAppearance.Material3.BodyLarge"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:text="@string/pair_intro"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+      <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/scheme_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:hint="@string/scheme_label">
+
+        <AutoCompleteTextView
+          android:id="@+id/scheme_input"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:hint="@string/scheme_label"
+          android:inputType="none"
+          android:importantForAutofill="no" />
+      </com.google.android.material.textfield.TextInputLayout>
+
+      <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/host_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="@string/host_label"
+        app:helperText="@string/host_help">
+
+        <com.google.android.material.textfield.TextInputEditText
+          android:id="@+id/host_input"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:autofillHints="url"
+          android:inputType="textUri"
+          android:maxLines="1" />
+      </com.google.android.material.textfield.TextInputLayout>
+
+      <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/port_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="@string/port_label">
+
+        <com.google.android.material.textfield.TextInputEditText
+          android:id="@+id/port_input"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:importantForAutofill="no"
+          android:inputType="number"
+          android:maxLength="5"
+          android:maxLines="1" />
+      </com.google.android.material.textfield.TextInputLayout>
+
+      <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/code_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="@string/code_label"
+        app:helperText="@string/code_help">
+
+        <com.google.android.material.textfield.TextInputEditText
+          android:id="@+id/code_input"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:fontFamily="monospace"
+          android:importantForAutofill="no"
+          android:inputType="textVisiblePassword|textNoSuggestions"
+          android:maxLength="128"
+          android:maxLines="1" />
+      </com.google.android.material.textfield.TextInputLayout>
+
+      <TextView
+        style="@style/TextAppearance.Material3.BodySmall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/network_warning"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+      <TextView
+        android:id="@+id/status_message"
+        style="@style/TextAppearance.Material3.BodyMedium"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:textColor="?attr/colorError"
+        android:visibility="gone" />
+
+      <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/pairing_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+      <com.google.android.material.button.MaterialButton
+        android:id="@+id/pair_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/pair_action" />
+
+      <com.google.android.material.button.MaterialButton
+        android:id="@+id/cancel_button"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/cancel" />
+    </LinearLayout>
+  </ScrollView>
+</LinearLayout>

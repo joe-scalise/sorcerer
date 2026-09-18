@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:id="@+id/root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical">
+
+  <com.google.android.material.appbar.MaterialToolbar
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorSurfaceContainer"
+    android:elevation="0dp"
+    android:minHeight="?attr/actionBarSize"
+    app:menu="@menu/main_actions"
+    app:subtitleTextColor="?attr/colorOnSurfaceVariant"
+    app:title="@string/app_name"
+    app:titleTextColor="?attr/colorOnSurface" />
+
+  <FrameLayout
+    android:id="@+id/content"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1">
+
+    <FrameLayout
+      android:id="@+id/web_container"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent" />
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+      android:id="@+id/loading_indicator"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      android:contentDescription="@string/loading"
+      android:visibility="gone" />
+
+    <com.google.android.material.card.MaterialCardView
+      android:id="@+id/state_card"
+      style="?attr/materialCardViewFilledStyle"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      android:layout_margin="24dp"
+      android:visibility="gone"
+      app:cardCornerRadius="24dp">
+
+      <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <ImageView
+          android:id="@+id/state_icon"
+          android:layout_width="64dp"
+          android:layout_height="64dp"
+          android:contentDescription="@null"
+          android:src="@drawable/ic_sorcerer_mark" />
+
+        <TextView
+          android:id="@+id/state_title"
+          style="@style/TextAppearance.Material3.TitleLarge"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="16dp"
+          android:gravity="center"
+          android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+          android:id="@+id/state_message"
+          style="@style/TextAppearance.Material3.BodyMedium"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="8dp"
+          android:gravity="center"
+          android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
+          android:id="@+id/state_primary_action"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="24dp" />
+
+        <com.google.android.material.button.MaterialButton
+          android:id="@+id/state_edit_action"
+          style="@style/Widget.Material3.Button.TextButton"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="4dp"
+          android:text="@string/edit_connection" />
+      </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+  </FrameLayout>
+</LinearLayout>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+  <!-- AGP 9.2's documented/default supported Gradle version is intentionally 9.4.1. -->
+  <issue id="AndroidGradlePluginVersion" severity="ignore" />
+</lint>

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogField, DialogActions, DialogButton } from '../Dialog'
 import { DialogSelect } from '../DialogSelect'
-import { getApi } from '../../api/client'
 import { useUIStore } from '../../stores/useUIStore'
 import { useAgentStore } from '../../stores/useAgentStore'
 import { useSessionStore } from '../../stores/useSessionStore'
 import { ChevronIcon, BotIcon, TerminalIcon } from '../icons'
 import { useProviders } from '../../hooks/useProviders'
+import { useToastStore } from '../../stores/useToastStore'
 
 type AgentMode = null | 'interactive' | 'autonomous'
 
@@ -28,21 +28,23 @@ export function AddAgentDialog() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
+  const [customModel, setCustomModel] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const open = activeDialog === 'add-agent'
   const selectedProvider = getProvider(provider) || defaultProvider
   const hasSuggestedModels = (selectedProvider?.models.length || 0) > 0
-  const isCustomModel = !!selectedProvider?.supportsModelOverride && !!model && !selectedProvider.models.includes(model)
+  const isCustomModel = customModel || (!!selectedProvider?.supportsModelOverride && !!model && !selectedProvider.models.includes(model))
   const canSubmit = !!name.trim() && !!selectedProvider && detectedProviders.length > 0 && (mode !== 'autonomous' || !!mission.trim()) && !submitting
   const bypassHint =
     provider === 'claude'
-      ? 'Claude runs with --dangerously-skip-permissions.'
+      ? 'Claude skips permission prompts and can run tools without asking.'
       : provider === 'gemini'
-        ? 'Gemini runs with --yolo.'
+        ? 'Gemini automatically approves tool actions without asking.'
         : provider === 'codex'
-          ? 'Codex runs with --dangerously-bypass-approvals-and-sandbox.'
-          : 'Runs with the provider’s closest unattended mode.'
+          ? 'Codex skips approval prompts and disables sandbox restrictions.'
+          : 'Automatically approves tool actions where supported by this provider.'
 
   useEffect(() => {
     if (!open || providersLoading || provider || !defaultProvider) return
@@ -50,7 +52,7 @@ export function AddAgentDialog() {
     setModel(defaultProvider.supportsModelOverride ? defaultProvider.defaultModel || defaultProvider.models[0] || '' : '')
   }, [open, providersLoading, provider, defaultProvider])
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setMode(null)
     setName('')
     setDescription('')
@@ -64,13 +66,20 @@ export function AddAgentDialog() {
     setShowAdvanced(false)
     setProvider('')
     setModel('')
+    setCustomModel(false)
+    setError(null)
     closeDialog()
+  }
+
+  const handleClose = () => {
+    if (!submitting) resetAndClose()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!canSubmit) return
     setSubmitting(true)
+    setError(null)
     try {
       const id = await addAgent({
         name: name.trim(),
@@ -84,13 +93,21 @@ export function AddAgentDialog() {
         auto_restart: mode === 'autonomous' && parseInt(scheduleMinutes) > 0,
         schedule_minutes: mode === 'autonomous' ? parseInt(scheduleMinutes) || 0 : 0,
         provider: selectedProvider.id,
-        model: selectedProvider.supportsModelOverride ? model : ''
+        model: selectedProvider.supportsModelOverride ? model.trim() : ''
       })
       if (id) {
-        await startAgent(id)
+        try {
+          await startAgent(id)
+        } catch (err) {
+          useToastStore.getState().addToast(`Agent created, but could not start: ${err instanceof Error ? err.message : String(err)}. Use Start to retry.`, 'error')
+        }
         setActiveSession(id)
-        handleClose()
+        resetAndClose()
+      } else {
+        setError('Could not create the agent. Check your provider settings and try again.')
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create agent')
     } finally {
       setSubmitting(false)
     }
@@ -128,6 +145,7 @@ export function AddAgentDialog() {
   return (
     <Dialog open={open} onClose={handleClose} title={mode === 'autonomous' ? 'New Scheduled Mission' : 'New Interactive Agent'}>
       <form onSubmit={handleSubmit}>
+        <fieldset disabled={submitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         {mode === 'autonomous' && (
           <div className="dialog-hint" style={{ marginBottom: 10, color: 'var(--accent)' }}>
             Scheduled missions are experimental. Start with longer intervals and monitor results before increasing frequency.
@@ -152,6 +170,7 @@ export function AddAgentDialog() {
               onChange={(nextValue) => {
                 const nextProvider = getProvider(nextValue)
                 setProvider(nextValue)
+                setCustomModel(false)
                 setModel(nextProvider?.supportsModelOverride ? nextProvider.defaultModel || nextProvider.models[0] || '' : '')
                 if (!nextProvider?.supportsRemoteControl) setRemoteControl(false)
               }}
@@ -170,9 +189,11 @@ export function AddAgentDialog() {
                     value={isCustomModel ? '__custom__' : model}
                     onChange={(nextValue) => {
                       if (nextValue === '__custom__') {
+                        setCustomModel(true)
                         if (!isCustomModel) setModel('')
                         return
                       }
+                      setCustomModel(false)
                       setModel(nextValue)
                     }}
                     options={[
@@ -189,6 +210,7 @@ export function AddAgentDialog() {
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
                       placeholder="Enter custom model"
+                      aria-label="Custom model"
                       style={{ marginTop: 8 }}
                     />
                   )}
@@ -214,7 +236,7 @@ export function AddAgentDialog() {
             Using bundled model suggestions. You can still enter any model manually.
           </div>
         )}
-        {detectedProviders.length === 0 && (
+        {!providersLoading && detectedProviders.length === 0 && (
           <div className="dialog-hint" style={{ marginTop: 4 }}>
             No supported providers were detected. Install a supported CLI or refresh Providers in Settings.
           </div>
@@ -235,7 +257,7 @@ export function AddAgentDialog() {
             <DialogField label="Mission">
               <textarea
                 className="dialog-input dialog-textarea"
-                placeholder={'Describe what this agent should do...\\n\\ne.g. Monitor the Sentry project for new errors. Triage severity and investigate root causes. For critical errors, draft a fix.'}
+                placeholder={'Describe what this agent should do...\n\ne.g. Monitor the Sentry project for new errors. Triage severity and investigate root causes. For critical errors, draft a fix.'}
                 value={mission}
                 onChange={(e) => setMission(e.target.value)}
                 rows={4}
@@ -269,7 +291,7 @@ export function AddAgentDialog() {
 
         <label className="dialog-checkbox">
           <input type="checkbox" checked={bypassPermissions} onChange={(e) => setBypassPermissions(e.target.checked)} />
-          Auto-accept permissions
+          Unattended mode
         </label>
         {bypassPermissions && (
           <div className="dialog-hint" style={{ marginTop: 4 }}>
@@ -286,6 +308,7 @@ export function AddAgentDialog() {
         <button
           type="button"
           className="dialog-advanced-toggle"
+          aria-expanded={showAdvanced}
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
           <ChevronIcon className={`dialog-advanced-chevron ${showAdvanced ? 'dialog-advanced-chevron--open' : ''}`} />
@@ -321,12 +344,14 @@ export function AddAgentDialog() {
           </div>
         )}
 
+        {error && <div className="dialog-error" role="alert">{error}</div>}
         <DialogActions>
           <DialogButton onClick={() => setMode(null)} disabled={submitting}>Back</DialogButton>
           <DialogButton variant="primary" type="submit" loading={submitting} disabled={!canSubmit}>
             {mode === 'autonomous' ? 'Create & Start Mission' : 'Create Agent'}
           </DialogButton>
         </DialogActions>
+        </fieldset>
       </form>
     </Dialog>
   )

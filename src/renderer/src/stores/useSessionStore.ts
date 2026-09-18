@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { Session } from '../types'
 import { useUIStore, findLeaf, findLeafBySession, clearSessionFromTree } from './useUIStore'
 import { useQuickNotesStore } from './useQuickNotesStore'
+import { useQuickNotesDraftStore } from './useQuickNotesDraftStore'
 import { disposeTerminal } from '../components/TerminalView'
 import { getApi } from '../api/client'
 import { useToastStore } from './useToastStore'
@@ -101,6 +102,7 @@ export const useSessionStore = create<SessionState>()(
       }))
     } catch (err) {
       console.error('[session-store] archiveSession failed:', err)
+      throw err
     }
   },
 
@@ -112,7 +114,9 @@ export const useSessionStore = create<SessionState>()(
       disposeTerminal(sessionId)
 
       // Clean up quick notes
-      getApi().quickNotes.delete(sessionId, 'session')
+      await useQuickNotesDraftStore.getState().remove(sessionId, 'session').catch((err) => {
+        console.error('[session-store] Notes cleanup failed:', err)
+      })
       const qnState = useQuickNotesStore.getState()
       if (qnState.overlayOpen && qnState.overlayParentId === sessionId) {
         qnState.closeOverlay()
@@ -134,6 +138,7 @@ export const useSessionStore = create<SessionState>()(
       }))
     } catch (err) {
       console.error('[session-store] deleteSession failed:', err)
+      throw err
     }
   },
 

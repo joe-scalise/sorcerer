@@ -14,3 +14,16 @@ docs/
 docs/shelved/
 nul
 *claude_b64*
+
+# Android companion (generated/local files)
+android-client/.gradle/
+android-client/.idea/
+android-client/.kotlin/
+android-client/local.properties
+android-client/**/*.iml
+android-client/**/build/
+android-client/**/captures/
+*.jks
+*.keystore
+*.apk
+*.aab
