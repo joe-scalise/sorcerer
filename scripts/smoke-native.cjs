@@ -6,7 +6,10 @@ const { spawnSync } = require('node:child_process')
 const { createRequire } = require('node:module')
 
 if (process.argv[2] !== '--child') {
-  const appRoot = path.resolve(process.argv[2] || process.cwd())
+  const packagedRoot = process.platform === 'darwin'
+    ? `dist/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Sorcerer.app/Contents/Resources/app.asar`
+    : `dist/${process.platform === 'win32' ? 'win' : 'linux'}-unpacked/resources/app.asar`
+  const appRoot = path.resolve(process.argv[2] === '--packaged' ? packagedRoot : process.argv[2] || process.cwd())
   const result = spawnSync(require('electron'), [__filename, '--child', appRoot], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     windowsHide: true,
@@ -16,9 +19,9 @@ if (process.argv[2] !== '--child') {
   if (result.error) console.error(result.error.message)
   process.exitCode = result.status ?? 1
 } else {
-  run().catch((error) => {
+  run().then(() => process.exit(0)).catch((error) => {
     console.error('Native smoke failed:', error)
-    process.exitCode = 1
+    process.exit(1)
   })
 }
 
@@ -34,7 +37,8 @@ async function run() {
     const wasm = path.join(path.dirname(appRequire.resolve('sql.js')), 'sql-wasm.wasm')
     const SQL = await initSqlJs({ locateFile: () => wasm })
     const database = new SQL.Database()
-    database.run('CREATE TABLE smoke (value TEXT); INSERT INTO smoke VALUES (?)', ['persistent'])
+    database.run('CREATE TABLE smoke (value TEXT)')
+    database.run('INSERT INTO smoke VALUES (?)', ['persistent'])
     const databasePath = path.join(temporary, 'smoke.db')
     fs.writeFileSync(databasePath, database.export())
     database.close()
