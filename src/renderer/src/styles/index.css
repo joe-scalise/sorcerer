@@ -1396,6 +1396,7 @@ body {
   border-top: 1px solid var(--border-subtle);
   padding: 8px 12px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
@@ -1875,6 +1876,60 @@ body {
   position: relative;
 }
 
+.sidebar-update {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-update-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-update-summary > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sidebar-update-copy { display: grid; gap: 2px; min-width: 0; }
+.sidebar-update-label { font-size: 12px; font-weight: 600; }
+.sidebar-update-detail { color: var(--text-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sidebar-update-hint { margin: 6px 0 0; }
+.sidebar-update .update-progress { display: block; margin: 8px 0 0; }
+.sidebar-update .update-error { margin: 6px 0 0; }
+
+.sidebar-update-install {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--accent-glow);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sidebar-update-summary:hover { background: var(--bg-hover); }
+.sidebar-update-install:hover:not(:disabled) { background: var(--accent-glow-strong); }
+.sidebar-update-install:active:not(:disabled) { transform: translateY(1px); }
+.sidebar-update-install:disabled { opacity: 0.6; cursor: default; }
+.sidebar-update-summary:focus-visible,
+.sidebar-update-install:focus-visible,
+.sidebar-update-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sidebar-update-icon { position: relative; color: var(--accent); }
+.sidebar-update-dot { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
 .main-titlebar {
   position: relative;
   overflow: hidden;
@@ -2167,6 +2222,7 @@ body {
 
 /* Collapsed footer */
 .sidebar-footer--collapsed {
+  flex-direction: column;
   justify-content: center;
   padding: 8px 6px;
 }

@@ -939,7 +939,7 @@ function GeneralTab() {
       <SettingRow label="Check for updates" description="Check at startup and every two hours">
         <Toggle checked={checkUpdates !== 'false'} onChange={(v) => setCheckUpdates(v ? 'true' : 'false')} label="Check for updates" />
       </SettingRow>
-      <SettingRow label="Download updates automatically" description="Download in the background where supported. You choose when to restart and install.">
+      <SettingRow label="Download updates automatically" description="With update checks enabled, download in the background where supported. A notice beside your profile lets you choose when to restart and install.">
         <Toggle checked={autoDownload !== 'false'} onChange={(v) => setAutoDownload(v ? 'true' : 'false')} label="Download updates automatically" />
       </SettingRow>
       <div className="settings-update-panel">

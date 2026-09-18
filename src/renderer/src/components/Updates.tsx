@@ -4,6 +4,7 @@ import { Dialog, DialogActions, DialogButton } from './Dialog'
 import { subscribeToUpdates, useUpdateStore } from '../stores/useUpdateStore'
 import type { UpdateState } from '../../../shared/update'
 import { renderMarkdown } from '../utils/renderMarkdown'
+import { RefreshIcon } from './icons'
 
 const LATEST_RELEASE_URL = 'https://github.com/joe-scalise/sorcerer/releases/latest'
 
@@ -42,6 +43,49 @@ export function UpdateSummary() {
     {state?.status === 'downloading' && <progress className="update-progress" max={100} value={state.progress || 0} aria-label="Update download progress" />}
     {(actionError || state?.error) && <p className="update-error" role="alert">{actionError || state?.error}</p>}
     {state?.checkedAt && <p className="update-caption">Last checked {new Date(state.checkedAt).toLocaleString()}</p>}
+  </div>
+}
+
+/** Persistent update entry point beside the user's everyday settings controls. */
+export function SidebarUpdate({ collapsed = false }: { collapsed?: boolean }) {
+  const { state, actionError, setOpen, run } = useUpdateStore()
+  if (!window.sorcerer || !state || (!state.version && state.status !== 'error')) return null
+
+  const installing = state.status === 'installing'
+  const downloading = state.status === 'downloading'
+  const error = actionError || state.error
+  const label = installing ? 'Preparing to restart…'
+    : error ? 'Update needs attention'
+    : state.downloaded ? 'Update ready'
+    : downloading ? 'Downloading update'
+    : 'Update available'
+  const description = `${label}${state.version ? ` · ${state.version}` : ''}`
+
+  if (collapsed) return <button
+    type="button"
+    className="footer-icon-btn sidebar-update-icon"
+    title={`${description} — View update`}
+    aria-label={`${description} — View update`}
+    onClick={() => setOpen(true)}
+  ><RefreshIcon /><span className="sidebar-update-dot" aria-hidden="true" /></button>
+
+  return <div className="sidebar-update">
+    <button type="button" className="sidebar-update-summary" onClick={() => setOpen(true)} title="View update details">
+      <RefreshIcon aria-hidden="true" />
+      <span className="sidebar-update-copy">
+        <span className="sidebar-update-label" role="status">{label}</span>
+        <span className="sidebar-update-detail">{state.version ? `Version ${state.version}` : 'View details and retry'}{downloading ? ` · ${Math.round(state.progress || 0)}%` : ''}</span>
+      </span>
+    </button>
+    {downloading && <progress className="update-progress" max={100} value={state.progress || 0} aria-label="Update download progress" />}
+    {state.downloaded && <button
+      type="button"
+      className="sidebar-update-install"
+      disabled={installing}
+      onClick={() => { void run('install') }}
+    >{installing ? 'Preparing to restart…' : 'Restart and install'}</button>}
+    {state.downloaded && !installing && <p className="sidebar-update-detail sidebar-update-hint">When you’re ready. Terminals and agents will stop.</p>}
+    {error && <p className="update-error" role="alert">{error}</p>}
   </div>
 }
 

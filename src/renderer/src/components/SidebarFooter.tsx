@@ -3,6 +3,7 @@ import { getApi } from '../api/client'
 import { MessageSquareIcon, SettingsIcon } from './icons'
 import { useSessionStore } from '../stores/useSessionStore'
 import { useUIStore } from '../stores/useUIStore'
+import { SidebarUpdate } from './Updates'
 
 /** MD5 hash for Gravatar URLs (pure JS, no dependencies) */
 function md5(input: string): string {
@@ -395,12 +396,13 @@ export function SidebarFooter({ collapsed, width = 260, pinned, togglePin }: { c
   if (collapsed) {
     return (
       <div className="sidebar-footer sidebar-footer--collapsed stagger-10">
+        <SidebarUpdate collapsed />
         {showFeedbackIcon && (
           <button className="footer-icon-btn" onClick={() => openDialog('feedback')} title="Give feedback">
             <MessageSquareIcon />
           </button>
         )}
-        <button className="footer-settings-btn" onClick={() => openDialog('settings')}>
+        <button className="footer-settings-btn" onClick={() => openDialog('settings')} aria-label="Settings">
           <SettingsIcon />
         </button>
       </div>
@@ -409,6 +411,7 @@ export function SidebarFooter({ collapsed, width = 260, pinned, togglePin }: { c
 
   return (
     <div className={`sidebar-footer stagger-10${compact ? ' sidebar-footer--compact' : ''}`}>
+      <SidebarUpdate />
       {showStats && <StatsPopover sessions={sessions} containerRef={statsTriggerRef} onClose={handleCloseStats} pinned={pinned} onTogglePin={togglePin} />}
       <div ref={statsTriggerRef}>
         <button
@@ -441,7 +444,7 @@ export function SidebarFooter({ collapsed, width = 260, pinned, togglePin }: { c
           {showClockDate && <span className="footer-clock-date">{date}</span>}
         </div>
       )}
-      <button className="footer-settings-btn" onClick={() => openDialog('settings')}>
+      <button className="footer-settings-btn" onClick={() => openDialog('settings')} aria-label="Settings">
         <SettingsIcon />
       </button>
     </div>
