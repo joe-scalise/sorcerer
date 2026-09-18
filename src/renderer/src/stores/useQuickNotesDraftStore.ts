@@ -124,3 +124,15 @@ export const useQuickNotesDraftStore = create<DraftState>((set, get) => {
     }
   }
 })
+
+/** Installation must not proceed while any window has an unsaved draft. */
+export async function flushAllNoteDrafts(): Promise<void> {
+  const store = useQuickNotesDraftStore.getState()
+  await Promise.all(Object.keys(store.drafts).map((key) => {
+    const separator = key.indexOf(':')
+    return store.flush(key.slice(separator + 1), key.slice(0, separator) as ParentType)
+  }))
+  if (Object.values(useQuickNotesDraftStore.getState().drafts).some((draft) => draft.dirty || draft.saving || draft.deleting || draft.error)) {
+    throw new Error('Some notes could not be saved. Reopen notes and retry before installing the update.')
+  }
+}

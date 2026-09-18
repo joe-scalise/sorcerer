@@ -10,7 +10,7 @@ vi.mock('electron', () => ({
     handle: (channel: string, handler: (...args: any[]) => any) => handlers.set(channel, handler),
     on: vi.fn()
   },
-  app: { getAppPath: () => process.cwd() },
+  app: { getAppPath: () => process.cwd(), getVersion: () => '1.8.0', isPackaged: false },
   dialog: {},
   shell: { openExternal }
 }))

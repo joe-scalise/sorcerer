@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect, useState } from 'react'
 import { getApi } from '../api/client'
+import { Updates } from './Updates'
 import { useSessionStore } from '../stores/useSessionStore'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useAgentStore } from '../stores/useAgentStore'
@@ -689,31 +690,11 @@ function useParticleSettings() {
   return { enabled, intensity }
 }
 
-function useUpdateCheck() {
-  const [update, setUpdate] = useState<{ version: string; url: string } | null>(null)
-  useEffect(() => {
-    let mounted = true
-    const check = async () => {
-      // Respect the setting
-      const enabled = await getApi().settings.get('checkForUpdates')
-      if (enabled === 'false') return
-      const u = await getApi().system.checkUpdate().catch(() => null)
-      if (mounted) setUpdate(u)
-    }
-    // Check after 5 seconds, then every 2 hours
-    const initial = setTimeout(check, 5000)
-    const interval = setInterval(check, 2 * 60 * 60 * 1000)
-    return () => { mounted = false; clearTimeout(initial); clearInterval(interval) }
-  }, [])
-  return update
-}
-
 export function MainContent() {
   const { sessions, activeSessionId, setActiveSession, deleteSession, createQuickTerminal, addLocalSession } = useSessionStore()
   const { projects } = useProjectStore()
   const { agents: agentsList } = useAgentStore()
   const { splitRoot, splitRight, splitDown, maximizedPanelId, focusModeSessionId, exitFocusMode, spotlightMode, toggleSpotlightMode } = useUIStore()
-  const updateAvailable = useUpdateCheck()
   const particles = useParticleSettings()
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
@@ -861,19 +842,7 @@ export function MainContent() {
         {particles.enabled && hasActiveSessions && !showingEmptyState && (
           <ParticleCanvas count={15} brightness={particles.intensity} />
         )}
-        {updateAvailable && (
-          <a
-            className="titlebar-update"
-            href="#"
-            onClick={(e) => {
-              e.preventDefault()
-              window.sorcerer?.window.openExternal(updateAvailable.url)
-            }}
-            title={`Download v${updateAvailable.version}`}
-          >
-            Update available: v{updateAvailable.version}
-          </a>
-        )}
+        <Updates />
       </div>
 
       <OrphanWorkspaceBanner />

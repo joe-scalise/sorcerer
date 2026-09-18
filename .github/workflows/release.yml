@@ -52,7 +52,10 @@ jobs:
           - os: windows-latest
             arch: x64
             build_script: build:win
-            artifact_glob: "dist/*.exe"
+            artifact_glob: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/latest.yml
           - os: macos-15
             arch: arm64
             build_script: build:mac
@@ -64,7 +67,9 @@ jobs:
           - os: ubuntu-latest
             arch: x64
             build_script: build:linux
-            artifact_glob: "dist/*.AppImage"
+            artifact_glob: |
+              dist/*.AppImage
+              dist/latest-linux.yml
 
     runs-on: ${{ matrix.os }}
 
@@ -124,6 +129,10 @@ jobs:
 
       - name: Smoke test Electron native modules
         run: npm run smoke:native
+
+      - name: Smoke test managed update download integrity
+        if: runner.os == 'Windows'
+        run: node scripts/smoke-update-download.cjs
 
       - name: Build (macOS, retry transient packaging failures)
         if: runner.os == 'macOS'
@@ -234,7 +243,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Verify complete installer set and generate checksums
+      - name: Install release validation dependencies
+        # The direct YAML dependency parses updater metadata; lifecycle scripts
+        # and native rebuilds are unnecessary in this verification-only job.
+        run: npm ci --ignore-scripts
+
+      - name: Verify installers and updater manifests, then generate checksums
         run: node scripts/prepare-release-assets.cjs artifacts
 
       - name: Upload complete release candidate

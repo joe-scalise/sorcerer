@@ -6,12 +6,16 @@ import { ScrollbackBuffer } from '../server/scrollback'
 interface PTYSession {
   ptyProcess: pty.IPty
   sessionId: string
+  exited: Promise<Error | undefined>
 }
 
 export class PTYService {
   private sessions: Map<string, PTYSession> = new Map()
+  /** Includes terminated PTYs until their real exit event and listeners finish. */
+  private liveSessions: Set<PTYSession> = new Set()
   private mainWindow: BrowserWindow
   private customShell: string | undefined
+  private spawnsBlocked = false
   private outputListeners: ((sessionId: string, data: string) => void)[] = []
   private exitListeners: ((sessionId: string, exitCode: number) => void)[] = []
   /** Extra windows that should receive terminal data for a given session */
@@ -25,6 +29,10 @@ export class PTYService {
 
   setCustomShell(shell: string | undefined): void {
     this.customShell = shell
+  }
+
+  setSpawnsBlocked(blocked: boolean): void {
+    this.spawnsBlocked = blocked
   }
 
   /** Register a listener for all PTY output (used by API server for WebSocket broadcast) */
@@ -76,6 +84,7 @@ export class PTYService {
     args?: string[]
     env?: Record<string, string>
   }): void {
+    if (this.spawnsBlocked) throw new Error('Sorcerer is preparing to restart. New terminals cannot start yet.')
     let file: string
     let args: string[]
 
@@ -104,8 +113,11 @@ export class PTYService {
       } as Record<string, string>
     })
 
-    const session: PTYSession = { ptyProcess, sessionId }
+    let finishExit!: (error?: Error) => void
+    const exited = new Promise<Error | undefined>((resolve) => { finishExit = resolve })
+    const session: PTYSession = { ptyProcess, sessionId, exited }
     this.sessions.set(sessionId, session)
+    this.liveSessions.add(session)
 
     ptyProcess.onData((data: string) => {
       // Store in scrollback for pop-out replay
@@ -136,9 +148,14 @@ export class PTYService {
     })
 
     ptyProcess.onExit(({ exitCode }) => {
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send(`terminal:exit:${sessionId}`, exitCode)
-      }
+      // A closing window or one failing consumer must not skip persistence
+      // listeners, leave a wait pending, or hide a still-running PTY on retry.
+      let exitError: Error | undefined
+      try {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send(`terminal:exit:${sessionId}`, exitCode)
+        }
+      } catch { /* window already destroyed */ }
 
       // Notify extra listeners of exit
       const extras = this.extraListeners.get(sessionId)
@@ -153,9 +170,16 @@ export class PTYService {
         this.extraListeners.delete(sessionId)
       }
 
-      for (const listener of this.exitListeners) listener(sessionId, exitCode)
-      this.sessions.delete(sessionId)
+      for (const listener of [...this.exitListeners]) {
+        try { listener(sessionId, exitCode) } catch (error) {
+          exitError ??= error instanceof Error ? error : new Error('A terminal exit handler failed.')
+        }
+      }
+      if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId)
       this.scrollback.remove(sessionId)
+      this.liveSessions.delete(session)
+      finishExit(exitError)
+      if (exitError) console.error(`[pty] Exit handler failed for ${sessionId}:`, exitError)
     })
   }
 
@@ -196,25 +220,43 @@ export class PTYService {
     await Promise.all(sessionIds.map((sessionId) => this.killAndWait(sessionId, timeoutMs)))
   }
 
-  private killAndWait(sessionId: string, timeoutMs: number): Promise<void> {
-    if (!this.sessions.has(sessionId)) return Promise.resolve()
+  /** Update installation must never proceed merely because its wait expired. */
+  async killAllAndWaitStrict(timeoutMs = 10_000): Promise<void> {
+    const sessions = [...this.liveSessions]
+    const results = await Promise.allSettled(sessions.map((session) => this.waitForExit(session, timeoutMs, true)))
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failure) throw failure.reason
+  }
 
-    return new Promise((resolve) => {
+  private killAndWait(sessionId: string, timeoutMs: number): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    return session ? this.waitForExit(session, timeoutMs, false) : Promise.resolve()
+  }
+
+  private waitForExit(session: PTYSession, timeoutMs: number, strict: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
       let settled = false
-      const finish = () => {
+      const finish = (error?: Error) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        this.removeExitListener(handleExit)
-        resolve()
+        if (error) reject(error)
+        else resolve()
       }
-      const handleExit = (exitedSessionId: string) => {
-        if (exitedSessionId === sessionId) finish()
+      const timer = setTimeout(() => finish(strict
+        ? new Error(`Terminal ${session.sessionId} did not stop within ${timeoutMs} ms. The update was not installed. Try again after it exits.`)
+        : undefined), timeoutMs)
+      // This resolves only after every exit consumer has been invoked, including
+      // the main process listeners that enqueue session state persistence.
+      void session.exited.then((error) => finish(strict ? error : undefined))
+      try {
+        session.ptyProcess.kill()
+        if (this.sessions.get(session.sessionId) === session) this.sessions.delete(session.sessionId)
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error(`Could not stop terminal ${session.sessionId}.`))
+      } finally {
+        this.extraListeners.delete(session.sessionId)
       }
-      const timer = setTimeout(finish, timeoutMs)
-
-      this.onExit(handleExit)
-      this.kill(sessionId)
     })
   }
 

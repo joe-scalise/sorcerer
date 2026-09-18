@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { UpdateAPI, UpdateState } from '../shared/update'
 
 export interface RemoteStatus {
   running: boolean
@@ -226,6 +227,25 @@ const api = {
   },
 
   system: {
+    updates: {
+      getState: () => ipcRenderer.invoke('system:updates:get-state') as Promise<UpdateState>,
+      check: () => ipcRenderer.invoke('system:updates:check') as Promise<UpdateState>,
+      download: () => ipcRenderer.invoke('system:updates:download') as Promise<UpdateState>,
+      install: () => ipcRenderer.invoke('system:updates:install') as Promise<UpdateState>,
+      onState: (callback: (state: UpdateState) => void) => {
+        const handler = (_event: unknown, state: UpdateState) => callback(state)
+        ipcRenderer.on('system:updates:state', handler)
+        return () => { ipcRenderer.removeListener('system:updates:state', handler) }
+      },
+      onPrepareInstall: (callback: (requestId: string) => void) => {
+        const handler = (_event: unknown, payload: { requestId: string }) => callback(payload.requestId)
+        ipcRenderer.on('updates:prepare-install', handler)
+        return () => { ipcRenderer.removeListener('updates:prepare-install', handler) }
+      },
+      prepared: (requestId: string, ok: boolean, error?: string) => {
+        ipcRenderer.send('updates:prepared', { requestId, ok, error })
+      }
+    } satisfies UpdateAPI,
     checkUpdate: () => ipcRenderer.invoke('system:check-update') as Promise<{ version: string; url: string } | null>,
     claudeStats: () => ipcRenderer.invoke('system:claude-stats') as Promise<{
       today: { messages: number; sessions: number; toolCalls: number; tokens: number }

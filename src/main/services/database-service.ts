@@ -990,4 +990,8 @@ export class DatabaseService {
       this.db = null
     }
   }
+
+  flush(): void {
+    this.save()
+  }
 }

@@ -9,6 +9,7 @@ import { DatabaseService } from '../services/database-service'
 import { WorktreeService } from '../services/worktree-service'
 import { FileWatcherService } from '../services/file-watcher-service'
 import { isExternalWebUrl } from '../window-security'
+import { UpdateService, isTrustedUpdateSender } from '../services/update-service'
 import {
   HandlerServices,
   listProjects,
@@ -106,7 +107,8 @@ export function registerIPC(
   ptyService: PTYService,
   dbService: DatabaseService,
   worktreeService: WorktreeService,
-  fileWatcherService: FileWatcherService
+  fileWatcherService: FileWatcherService,
+  updateService?: UpdateService
 ): void {
   const services: HandlerServices = {
     db: dbService,
@@ -745,30 +747,33 @@ export function registerIPC(
 
   // ── Update check ───────────────────────────────────────────
 
-  ipcMain.handle('system:check-update', async () => {
-    try {
-      const res = await fetch('https://api.github.com/repos/joe-scalise/sorcerer/releases/latest', {
-        headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'Sorcerer' }
-      })
-      if (!res.ok) return null
-      const data = await res.json()
-      const latest = (data.tag_name || '').replace(/^v/, '')
-      const current = app.getVersion()
-      if (!latest) return null
-
-      // Simple semver compare
-      const toNum = (v: string) => v.split('.').map(Number)
-      const [cMaj, cMin, cPat] = toNum(current)
-      const [lMaj, lMin, lPat] = toNum(latest)
-      const isNewer = lMaj > cMaj || (lMaj === cMaj && lMin > cMin) || (lMaj === cMaj && lMin === cMin && lPat > cPat)
-
-      if (isNewer) {
-        return { version: latest, url: data.html_url }
-      }
-      return null
-    } catch {
-      return null
-    }
+  // These controls deliberately live only in desktop IPC, never the remote RPC
+  // handler table. Validate the top-level local renderer on every invocation.
+  const updates = updateService ?? new UpdateService({ getSetting: (key) => dbService.getSetting(key) })
+  const requireUpdateSender = (event: Electron.IpcMainInvokeEvent) => {
+    if (!isTrustedUpdateSender(event)) throw new Error('Updates are only available in the local Sorcerer window.')
+  }
+  ipcMain.handle('system:updates:get-state', (event) => {
+    requireUpdateSender(event)
+    return updates.getState()
+  })
+  ipcMain.handle('system:updates:check', (event) => {
+    requireUpdateSender(event)
+    return updates.check()
+  })
+  ipcMain.handle('system:updates:download', (event) => {
+    requireUpdateSender(event)
+    return updates.download()
+  })
+  ipcMain.handle('system:updates:install', (event) => {
+    requireUpdateSender(event)
+    return updates.install()
+  })
+  ipcMain.handle('system:check-update', async (event) => {
+    requireUpdateSender(event)
+    const state = await updates.check()
+    if (state.status === 'error') throw new Error(state.error)
+    return state.version && state.url ? { version: state.version, url: state.url } : null
   })
 
   // ── Claude integration stats ───────────────────────────────
