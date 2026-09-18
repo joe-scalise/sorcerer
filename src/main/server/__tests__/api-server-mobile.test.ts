@@ -18,6 +18,7 @@ const LEGACY_TOKEN = 'legacy-browser-token'
 class TestDatabase {
   settings = new Map<string, string>([
     ['theme', 'gruvbox-dark'],
+    ['featureStandaloneAgents', 'true'],
     ['apiKey_openai', 'super-secret-provider-key']
   ])
   devices = new Map<string, MobileDeviceCredentialRecord>()
@@ -178,6 +179,30 @@ describe('ApiServer mobile v1', () => {
 
   afterEach(() => {
     server.stop()
+  })
+
+  it('keeps Projects available remotely while disabled Agents cannot be started', async () => {
+    db.settings.delete('featureStandaloneAgents')
+    const rpc = (method: string, args: unknown[] = []) => request(port, '/api/rpc', {
+      method: 'POST', token: LEGACY_TOKEN, body: JSON.stringify({ method, args })
+    })
+    expect(await rpc('system:features')).toMatchObject({ status: 200, body: { result: { standaloneAgents: false } } })
+    expect(await rpc('agent:list')).toMatchObject({ status: 200, body: { result: [] } })
+    expect(await rpc('agent-group:list')).toMatchObject({ status: 200, body: { result: [] } })
+    const projects = await rpc('project:list')
+    expect(projects.status).toBe(200)
+    expect(projects.body.result).toHaveLength(1)
+    const sessions = await rpc('session:list')
+    expect(sessions.status).toBe(200)
+    expect(sessions.body.result).toHaveLength(1)
+    for (const method of ['agent:start', 'agent:resume', 'agent:restart', 'agent:remove', 'agent-group:remove']) {
+      const result = await rpc(method, ['agent-1'])
+      expect(result.status).toBeGreaterThanOrEqual(400)
+      expect(result.text).toContain('Agents are disabled')
+    }
+    db.settings.set('featureStandaloneAgents', 'true')
+    expect(await rpc('agent:list')).toMatchObject({ status: 200, body: { result: [] } })
+    expect(db.listAgents()).toHaveLength(1)
   })
 
   it('publishes protocol capabilities without exposing a credential', async () => {

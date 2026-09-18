@@ -1,5 +1,6 @@
 import { PlusIcon, FolderPlusIcon, BotIcon } from './icons'
 import { useUIStore } from '../stores/useUIStore'
+import { getFeatures } from '../features'
 
 export function ActionBar({ collapsed }: { collapsed: boolean }) {
   const { openDialog } = useUIStore()
@@ -10,9 +11,9 @@ export function ActionBar({ collapsed }: { collapsed: boolean }) {
         <button className="action-btn action-btn--icon action-btn--primary-icon" onClick={() => openDialog('new-session')}>
           <PlusIcon />
         </button>
-        <button className="action-btn action-btn--icon" onClick={() => openDialog('add-agent')}>
+        {getFeatures().standaloneAgents && <button className="action-btn action-btn--icon" onClick={() => openDialog('add-agent')} title="New Agent">
           <BotIcon />
-        </button>
+        </button>}
         <button className="action-btn action-btn--icon" onClick={() => openDialog('add-project')}>
           <FolderPlusIcon />
         </button>
@@ -26,9 +27,9 @@ export function ActionBar({ collapsed }: { collapsed: boolean }) {
         <PlusIcon />
         <span>New Session</span>
       </button>
-      <button className="action-btn action-btn--icon" onClick={() => openDialog('add-agent')} title="New Agent">
+      {getFeatures().standaloneAgents && <button className="action-btn action-btn--icon" onClick={() => openDialog('add-agent')} title="New Agent">
         <BotIcon />
-      </button>
+      </button>}
       <button className="action-btn action-btn--icon" onClick={() => openDialog('add-project')}>
         <FolderPlusIcon />
       </button>

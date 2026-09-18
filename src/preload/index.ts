@@ -227,6 +227,7 @@ const api = {
   },
 
   system: {
+    features: () => ipcRenderer.invoke('system:features') as Promise<import('../shared/features').FeatureFlags>,
     updates: {
       getState: () => ipcRenderer.invoke('system:updates:get-state') as Promise<UpdateState>,
       check: () => ipcRenderer.invoke('system:updates:check') as Promise<UpdateState>,

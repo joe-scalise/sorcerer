@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useState } from 'react'
 import { ActionBar } from './ActionBar'
 import { SearchBar } from './SearchBar'
 import { AgentTree } from './AgentTree'
+import { getFeatures } from '../features'
 import { ProjectTree } from './ProjectTree'
 import { SidebarFooter, PinnedStats, useStatsPinned } from './SidebarFooter'
 import { StatusDot } from './StatusDot'
@@ -24,7 +25,7 @@ export function Sidebar() {
   const { pinned, togglePin } = useStatsPinned()
   const agents = useAgentStore((s) => s.agents)
   const agentGroups = useAgentStore((s) => s.groups)
-  const showAgentPane = agents.length > 0 || agentGroups.length > 0 || searchQuery.trim().length > 0
+  const showAgentPane = getFeatures().standaloneAgents && (agents.length > 0 || agentGroups.length > 0 || searchQuery.trim().length > 0)
 
   const SNAP_THRESHOLD = 120
   const DEFAULT_WIDTH_SNAP = 20
@@ -203,7 +204,7 @@ function CollapsedTree() {
   return (
     <div className="collapsed-tree">
       {/* Agents */}
-      {agents.length > 0 && (
+      {getFeatures().standaloneAgents && agents.length > 0 && (
         <div className="collapsed-project-group">
           {agents.map((a) => (
             <Tooltip key={a.id} label={a.name} position="right">

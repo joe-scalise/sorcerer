@@ -1,3 +1,4 @@
+import { getFeatureFlags } from './features'
 /**
  * Briefing Service — Collects session/agent context and generates
  * personalized "here's where you left off" summaries via AI.
@@ -91,7 +92,7 @@ function getScrollbackTail(pty: PTYService, sessionId: string, maxChars: number 
 export function collectBriefingData(db: DatabaseService, pty: PTYService): BriefingData {
   const projects = db.listProjects()
   const allSessions = db.listSessions()
-  const allAgents = db.listAgents()
+  const allAgents = getFeatureFlags(db).standaloneAgents ? db.listAgents() : []
 
   // Filter to non-deleted, non-archived sessions (exclude quick terminals)
   const relevantSessions = allSessions.filter(

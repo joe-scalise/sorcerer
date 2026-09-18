@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { SearchIcon } from './icons'
 import { useUIStore } from '../stores/useUIStore'
+import { getFeatures } from '../features'
 
 export function SearchBar() {
   const { searchQuery, setSearchQuery } = useUIStore()
@@ -15,7 +16,7 @@ export function SearchBar() {
           className="search-input"
           type="text"
           placeholder="Search..."
-          aria-label="Search projects, sessions, and agents"
+          aria-label={getFeatures().standaloneAgents ? 'Search projects, sessions, and agents' : 'Search projects and sessions'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />

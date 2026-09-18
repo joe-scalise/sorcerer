@@ -6,6 +6,7 @@ import { isPopout } from './popout'
 import { getThemeById, applyTheme } from './themes'
 import './styles/index.css'
 import { registerUpdatePreparation } from './prepareUpdate'
+import { loadFeatures } from './features'
 
 async function boot() {
   registerUpdatePreparation()
@@ -26,6 +27,8 @@ async function boot() {
     const { initRemoteClient } = await import('./api/client')
     await initRemoteClient(baseUrl, token)
   }
+
+  await loadFeatures()
 
   // Popout windows get a minimal chrome-less view
   if (isPopout()) {
@@ -49,4 +52,14 @@ async function boot() {
   )
 }
 
-boot()
+void boot().catch((error) => {
+  console.error('Sorcerer could not start:', error)
+  const root = document.getElementById('root')!
+  const message = document.createElement('p')
+  message.textContent = 'Could not connect to Sorcerer. Please reopen the app or reload to try again.'
+  const retry = document.createElement('button')
+  retry.type = 'button'
+  retry.textContent = 'Reload'
+  retry.onclick = () => window.location.reload()
+  root.replaceChildren(message, retry)
+})
