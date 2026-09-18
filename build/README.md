@@ -1,8 +1,8 @@
 # Sorcerer app identity
 
-`mark.svg` is the shared pixel robot artwork. Its right half fades in discrete
-steps and breaks into separated pixels. The transparent face details and stepped
-opacity also work as a CSS mask, so the app bar follows the selected theme accent.
+`mark.svg` is the shared lightning bolt artwork: one solid silhouette with clean
+diagonal edges. The app bar uses it as a CSS mask and follows the selected theme
+accent; desktop icons use amber on a dark rounded tile.
 
 Run `npm run icons:generate` after editing the mark. The generator uses the
 project's Electron dependency in an isolated, hidden window and produces:

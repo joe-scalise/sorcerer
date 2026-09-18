@@ -1,10 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="1024" height="1024">
   <rect width="20" height="20" rx="4" fill="#171511"/>
-  <g transform="translate(2 2)" fill="#e2a445" shape-rendering="crispEdges">
-<!-- Pixel robot: the right half dissolves into a stepped, translucent edge. -->
-  <path opacity="1" d="M7 1h1v1h-1z M8 1h1v1h-1z M7 2h1v1h-1z M4 3h1v1h-1z M5 3h1v1h-1z M6 3h1v1h-1z M7 3h1v1h-1z M3 4h1v1h-1z M4 4h1v1h-1z M5 4h1v1h-1z M6 4h1v1h-1z M7 4h1v1h-1z M3 5h1v1h-1z M4 5h1v1h-1z M5 5h1v1h-1z M6 5h1v1h-1z M7 5h1v1h-1z M1 6h1v1h-1z M2 6h1v1h-1z M3 6h1v1h-1z M4 6h1v1h-1z M5 6h1v1h-1z M6 6h1v1h-1z M7 6h1v1h-1z M1 7h1v1h-1z M2 7h1v1h-1z M3 7h1v1h-1z M6 7h1v1h-1z M7 7h1v1h-1z M1 8h1v1h-1z M2 8h1v1h-1z M3 8h1v1h-1z M6 8h1v1h-1z M7 8h1v1h-1z M1 9h1v1h-1z M2 9h1v1h-1z M3 9h1v1h-1z M4 9h1v1h-1z M5 9h1v1h-1z M6 9h1v1h-1z M7 9h1v1h-1z M3 10h1v1h-1z M4 10h1v1h-1z M5 10h1v1h-1z M3 11h1v1h-1z M4 11h1v1h-1z M5 11h1v1h-1z M6 11h1v1h-1z M7 11h1v1h-1z M4 12h1v1h-1z M5 12h1v1h-1z M6 12h1v1h-1z M7 12h1v1h-1z"/>
-  <path opacity=".72" d="M8 3h1v1h-1z M9 3h1v1h-1z M8 4h1v1h-1z M9 4h1v1h-1z M8 5h1v1h-1z M9 5h1v1h-1z M8 6h1v1h-1z M9 6h1v1h-1z M8 9h1v1h-1z M9 9h1v1h-1z M8 11h1v1h-1z M9 11h1v1h-1z M8 12h1v1h-1z M9 12h1v1h-1z"/>
-  <path opacity=".42" d="M10 4h1v1h-1z M10 5h1v1h-1z M10 6h1v1h-1z M11 6h1v1h-1z M10 7h1v1h-1z M11 7h1v1h-1z M10 8h1v1h-1z M10 9h1v1h-1z M10 10h1v1h-1z"/>
-  <path opacity=".22" d="M11 5h1v1h-1z M12 6h1v1h-1z M13 7h1v1h-1z M13 8h1v1h-1z M12 9h1v1h-1z M11 11h1v1h-1z"/>
+  <g transform="translate(2 2)" fill="#e2a445">
+<path d="M9.5 1 3 9h4l-.5 6L13 7H9z"/>
   </g>
 </svg>
