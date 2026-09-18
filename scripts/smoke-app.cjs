@@ -9,14 +9,24 @@ if (process.argv[2] !== '--child') {
   const packaged = process.platform === 'darwin'
     ? `dist/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Sorcerer.app/Contents/Resources/app.asar`
     : `dist/${process.platform === 'win32' ? 'win' : 'linux'}-unpacked/resources/app.asar`
-  const appRoot = path.resolve(process.argv[2] === '--packaged' ? packaged : process.cwd())
+  let appRoot = path.resolve(process.argv[2] === '--packaged' ? packaged : process.cwd())
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'sorcerer-app-smoke-'))
   const env = { ...process.env, HOME: profile, USERPROFILE: profile, APPDATA: path.join(profile, 'appdata'), LOCALAPPDATA: path.join(profile, 'localappdata') }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
+  delete env.NODE_PATH
   fs.mkdirSync(env.APPDATA)
   fs.mkdirSync(env.LOCALAPPDATA)
   try {
+    if (appRoot.endsWith('.asar')) {
+      // Test outside the checkout so missing shipped dependencies cannot fall
+      // back to the development node_modules in ancestor directories.
+      const isolatedRoot = path.join(profile, 'application', 'app.asar')
+      fs.mkdirSync(path.dirname(isolatedRoot))
+      fs.copyFileSync(appRoot, isolatedRoot)
+      if (fs.existsSync(`${appRoot}.unpacked`)) fs.cpSync(`${appRoot}.unpacked`, `${isolatedRoot}.unpacked`, { recursive: true })
+      appRoot = isolatedRoot
+    }
     for (const phase of ['write', 'read']) {
       const result = spawnSync(require('electron'), [__filename, '--child', appRoot, profile, phase], {
         env, windowsHide: true, stdio: 'inherit', timeout: 60000
