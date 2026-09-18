@@ -46,8 +46,23 @@ Do not omit any of the three section headers, even for small releases.
 1. Copy [TEMPLATE.md](./TEMPLATE.md).
 2. Fill in all three required sections.
 3. Save the file as `docs/releases/vX.Y.Z.md`.
-4. Push the git tag.
-5. Apply the same curated body to the GitHub release for that tag.
+4. Set the same version in `package.json` and `package-lock.json`; run `npm run release:check`, `npm test`, `node --test scripts/release-checks.cjs`, and `npm run verify`.
+5. Open the release preparation PR. Run the **Release** workflow manually on its branch for a packaging rehearsal. Manual runs upload downloadable workflow artifacts and do not create or publish a release.
+6. Verify all four installers, native/app smoke checks, and `SHA256SUMS.txt`. Perform interactive install/upgrade checks on the supported platforms, including terminal input, popouts, restart, and clean shutdown. Confirm signing status and document unsigned builds honestly.
+7. Merge the reviewed release commit, then create and push its matching tag. The tag workflow stages a **draft** GitHub release with the curated body; it refuses to modify an already published release.
+8. Review the draft's version, source commit, notes, four installers, and checksum file before explicitly publishing. If the intended release date changed during review, update the note before tagging.
+
+## Release candidate assets
+
+Each desktop release requires Windows x64 `.exe`, macOS x64 and arm64 `.dmg`, and Linux x64 `.AppImage` installers. Filenames include the version and architecture. The final workflow artifact is named `Sorcerer-vX.Y.Z-release-candidate` and includes `SHA256SUMS.txt`.
+
+Verify downloaded installers with `sha256sum -c SHA256SUMS.txt` on Linux, `shasum -a 256 -c SHA256SUMS.txt` on macOS, or `Get-FileHash -Algorithm SHA256` on Windows and compare each value to the manifest.
+
+Native checks use the same Electron runtime as packaging. `node scripts/smoke-native.cjs --packaged` loads the PTY and SQLite WASM from packaged resources. `node scripts/smoke-app.cjs --packaged` boots the packaged app code and preload twice in a disposable profile to verify persistence and shutdown. Linux app checks need an X display (CI uses `xvfb-run`). These automated checks do not replace installer/upgrade QA.
+
+For local Windows builds from PowerShell, use `npm.cmd run build:win -- --x64 --publish never` so npm's PowerShell wrapper does not consume the builder flags. A source rebuild of node-pty requires Visual Studio's matching Spectre-mitigated C++ libraries. The node-pty package also supplies native prebuilds; validate any packaged build with the smoke commands above.
+
+Android uses its own `android-v*` release flow and must not replace the desktop release marked Latest.
 
 ## GitHub release rule
 

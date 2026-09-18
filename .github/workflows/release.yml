@@ -78,7 +78,7 @@ jobs:
 
       - name: Install Linux build tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 xvfb
 
       - name: Install libfuse2 (AppImage packaging)
         if: runner.os == 'Linux'
@@ -178,6 +178,23 @@ jobs:
 
       - name: Smoke test packaged native dependencies
         run: node scripts/smoke-native.cjs --packaged
+
+      - name: Smoke test packaged app boot and persistence
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a node scripts/smoke-app.cjs --packaged
+          else
+            node scripts/smoke-app.cjs --packaged
+          fi
+
+      - name: Upload app smoke screenshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: smoke-${{ runner.os }}-${{ matrix.arch }}
+          path: dist/smoke-*.png
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
