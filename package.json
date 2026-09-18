@@ -1,6 +1,6 @@
 {
   "name": "sorcerer",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "Multi-session desktop workbench for orchestrating AI coding agents in isolated Git worktrees.",
   "homepage": "https://sorcerer.sh",
   "repository": {
@@ -17,6 +17,7 @@
     "lint": "npm run typecheck",
     "verify": "npm run typecheck && npm run build",
     "build": "electron-vite build",
+    "icons:generate": "node scripts/generate-icons.cjs",
     "build:win": "electron-vite build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",

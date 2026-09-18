@@ -131,7 +131,7 @@ export function Sidebar() {
     return (
       <aside className="sidebar sidebar--collapsed" ref={sidebarRef}>
         <div className="titlebar stagger-1">
-          <div className="titlebar-logo" />
+          <div className="titlebar-logo" aria-hidden="true" />
         </div>
 
         <button className="sidebar-toggle-btn" onClick={toggleSidebarCollapse}>
@@ -155,7 +155,7 @@ export function Sidebar() {
       style={{ width: liveSidebarWidth, minWidth: liveSidebarWidth }}
     >
       <div className="titlebar stagger-1">
-        <div className="titlebar-logo" />
+        <div className="titlebar-logo" aria-hidden="true" />
         <span className="titlebar-text">Sorcerer</span>
         <button className="sidebar-toggle-btn" onClick={toggleSidebarCollapse}>
           <PanelLeftCloseIcon />
