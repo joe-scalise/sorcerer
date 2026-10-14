@@ -191,12 +191,20 @@ function PanelHeaderInfo({ panelId, data }: { panelId: string | null; data: Enti
   )
 }
 
-function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: () => void }) {
+export function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<{ terminal: Terminal; fitAddon: FitAddon } | null>(null)
+  const onExitedRef = useRef(onExited)
+
+  useEffect(() => {
+    onExitedRef.current = onExited
+  }, [onExited])
 
   useEffect(() => {
     if (!containerRef.current) return
+
+    let disposed = false
+    let fitFrame: number | undefined
 
     const theme = getAppliedTheme()
     const terminal = new Terminal({
@@ -218,6 +226,7 @@ function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: 
     termRef.current = { terminal, fitAddon }
 
     getApi().settings.get('terminalFontSize').then((v: string | undefined) => {
+      if (disposed) return
       const size = v ? Number(v) : 13
       if (size && size !== 13) {
         terminal.options.fontSize = size
@@ -226,8 +235,9 @@ function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: 
     })
 
     getApi().popout.getScrollback(sessionId).then((scrollback: string) => {
+      if (disposed) return
       if (scrollback) terminal.write(scrollback)
-      requestAnimationFrame(() => {
+      fitFrame = requestAnimationFrame(() => {
         try {
           fitAddon.fit()
           getApi().terminal.resize(sessionId, terminal.cols, terminal.rows)
@@ -261,7 +271,7 @@ function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: 
     const unsubExit = getApi().terminal.onExit(sessionId, (exitCode: number) => {
       terminal.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`)
       getApi().popout.notifySessionUpdated(sessionId, 'idle', null)
-      onExited()
+      onExitedRef.current()
     })
 
     const resizeObserver = new ResizeObserver(() => {
@@ -272,16 +282,19 @@ function PopoutTerminal({ sessionId, onExited }: { sessionId: string; onExited: 
     })
     resizeObserver.observe(containerRef.current)
 
-    requestAnimationFrame(() => terminal.focus())
+    const focusFrame = requestAnimationFrame(() => terminal.focus())
 
     return () => {
+      disposed = true
+      if (fitFrame !== undefined) cancelAnimationFrame(fitFrame)
+      cancelAnimationFrame(focusFrame)
       resizeObserver.disconnect()
       unsubData()
       unsubExit()
       terminal.dispose()
       termRef.current = null
     }
-  }, [sessionId, onExited])
+  }, [sessionId])
 
   useEffect(() => {
     const handler = (e: Event) => {

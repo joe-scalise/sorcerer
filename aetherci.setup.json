@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "project": {
+    "id": "f072aaca-b8e6-44f9-8cf0-934ad739da4d",
+    "name": "Sorcerer",
+    "settings": {
+      "predictions_enabled": false
+    }
+  },
+  "integrations": [
+    {
+      "name": "Sorcerer GitHub",
+      "type": "github",
+      "config_overrides": {
+        "repository": "joe-scalise/sorcerer",
+        "workflows": [],
+        "branches": []
+      },
+      "webhook": "auto"
+    }
+  ]
+}
