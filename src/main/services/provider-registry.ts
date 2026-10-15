@@ -59,7 +59,7 @@ export function resolveLaunchModel(
 
 export function listProviders(db: DatabaseService): ProviderRegistryEntry[] {
   const cached = readStoredRegistry(db)
-  if (!cached || cached.providers.length === 0) {
+  if (!cached || cached.providers.length !== getProviderRunners().length || getProviderRunners().some(runner => !cached.providers.some(provider => provider.id === runner.id))) {
     return refreshProviders(db)
   }
   return decorateProviders(db, cached.providers)
@@ -114,7 +114,7 @@ function getDefaultModel(
   if (keyedValue) return keyedValue
 
   const legacyValue = db.getSetting(LEGACY_DEFAULT_MODEL_KEY)
-  if (legacyValue && provider.id === defaultProviderId) {
+  if (legacyValue && provider.id === defaultProviderId && !getProviderRunners().find(runner => runner.id === provider.id)?.usesCliModelDefault) {
     return legacyValue
   }
 
@@ -141,8 +141,14 @@ function probeRunner(
   runner: ProviderRunner,
   checkedAt: number
 ): StoredProviderEntry {
-  const binaryPath = runner.resolveBinary()
-  const probe = probeBinary(binaryPath)
+  let binaryPath = runner.id
+  let probe: ReturnType<typeof probeBinary>
+  try {
+    binaryPath = runner.resolveBinary()
+    probe = probeBinary(binaryPath, runner)
+  } catch (error) {
+    probe = { detected: false, supportsModelFlag: false, error: error instanceof Error ? error.message : 'CLI detection failed.' }
+  }
   const discoveredModels = runner.discoverModels?.() || {
     models: runner.fallbackModels,
     usesFallback: true
@@ -165,13 +171,14 @@ function probeRunner(
   }
 }
 
-function probeBinary(binaryPath: string): {
+function probeBinary(binaryPath: string, runner: ProviderRunner): {
   detected: boolean
   error?: string
   supportsModelFlag: boolean
 } {
   const useShell = /\.cmd$|\.bat$/i.test(binaryPath)
-  const result = spawnSync(binaryPath, ['--help'], {
+  const result = spawnSync(binaryPath, runner.probeArgs?.() || ['--help'], {
+    env: { ...process.env, ...runner.getEnv('provider-probe') },
     encoding: 'utf8',
     timeout: 4000,
     windowsHide: true,
@@ -179,6 +186,7 @@ function probeBinary(binaryPath: string): {
   })
 
   const output = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+  if (!result.error && result.status === 0) runner.observeHelp?.(output)
   const supportsModelFlag = /(^|\s)(-m,\s*)?--model\b/m.test(output)
 
   if (result.error) {

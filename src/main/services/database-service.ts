@@ -244,6 +244,11 @@ export class DatabaseService {
       this.db.run(`ALTER TABLE sessions ADD COLUMN provider_session_id TEXT`)
     } catch { /* column already exists */ }
 
+    // Provider-native identity for experimental Agent histories.
+    try {
+      this.db.run(`ALTER TABLE agents ADD COLUMN provider_session_id TEXT`)
+    } catch { /* column already exists */ }
+
     // Track when the current/last session run started
     try {
       this.db.run(`ALTER TABLE sessions ADD COLUMN started_at INTEGER`)
@@ -656,6 +661,7 @@ export class DatabaseService {
   }
 
   updateAgent(id: string, updates: Partial<{
+    provider_session_id: string | null
     name: string
     description: string
     system_prompt: string

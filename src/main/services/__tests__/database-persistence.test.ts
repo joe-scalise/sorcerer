@@ -116,4 +116,13 @@ describe('atomic database persistence', () => {
     expect(fs.readFileSync(databasePath)).toEqual(original)
     expect(fs.readFileSync(collisionPath, 'utf8')).toBe('unrelated temporary file')
   })
+
+  it('preserves the provider-native Agent identity across database reopen', async () => {
+    db.addAgent({ id: 'copilot-agent', name: 'Copilot', provider: 'copilot' })
+    db.updateAgent('copilot-agent', { provider_session_id: '9ce2fa51-471a-4fa8-844d-ad7442379052' })
+    db.close()
+    db = new DatabaseService()
+    await db.ensureReady()
+    expect(db.getAgent('copilot-agent')).toMatchObject({ provider: 'copilot', provider_session_id: '9ce2fa51-471a-4fa8-844d-ad7442379052' })
+  })
 })

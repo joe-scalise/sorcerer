@@ -14,9 +14,9 @@ Grab the latest release for your platform:
 **Android companion:** Sideloadable Sorcerer Remote APKs use independent
 `android-v*` releases. See the [Android setup guide](docs/android.md).
 
-Requires a supported AI CLI tool installed and available on `PATH`, such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Gemini CLI, or Codex CLI.
+Requires a supported AI CLI tool installed, such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Gemini CLI, Codex CLI, OpenCode, or GitHub Copilot CLI. See the [provider setup guide](docs/providers.md).
 
-> **Authentication note:** Sorcerer runs multiple concurrent agent sessions. Consumer subscription accounts (Claude.ai Pro, Gemini Advanced, etc.) are not designed for this usage pattern — you should authenticate each CLI tool with an **API key** from the respective provider.
+> **Authentication:** Sign in using your CLI provider's documented method and account plan. Copilot CLI uses its own GitHub authentication; Sorcerer does not require a separate API key or copy credentials.
 
 > **Windows note:** The installer is not yet code-signed. SmartScreen may show "Windows protected your PC" — click **More info** → **Run anyway** to proceed. macOS users may need to right-click → Open on first launch.
 
@@ -37,14 +37,14 @@ Standalone **Agents** are an optional experimental feature, disabled by default.
 
 ## Permissions
 
-Sorcerer exposes a provider-agnostic unattended mode toggle. When enabled, it maps to the closest equivalent supported by the selected provider — for example Claude Code uses `--dangerously-skip-permissions`, Gemini CLI uses `--yolo`, and Codex CLI uses `--dangerously-bypass-approvals-and-sandbox`. This can be toggled per session and per agent. Review each provider's documentation before enabling it.
+Sorcerer exposes an unattended mode toggle. When enabled, it maps to the selected provider: Claude Code uses `--dangerously-skip-permissions`, Gemini CLI uses `--yolo`, Codex CLI uses `--dangerously-bypass-approvals-and-sandbox`, and Copilot CLI uses `--allow-all`. This can be toggled per session and per agent. Review each provider's documentation before enabling it.
 
 ## Terms of Service & Licensing
 
 Sorcerer is an independent orchestration workbench. It operates as a wrapper around existing CLI-based AI agents such as Claude Code, Gemini CLI, and Codex CLI.
 
 - **Independent Tool**: Sorcerer is not affiliated with, endorsed by, or sponsored by Anthropic, Google, OpenAI, or any other AI service provider.
-- **API Keys Required**: Sorcerer's multi-session model is designed for API key usage. Consumer subscription accounts are not compatible with concurrent session workflows. Users should authenticate each CLI tool with an API key from the respective provider.
+- **Provider Authentication**: Use a valid account and the authentication method supported by your CLI provider. Account permissions, model access, usage limits and billing remain controlled by that provider.
 - **No Circumvention**: Sorcerer does not bypass, modify, or multiplex user authentication or subscriptions. It relies entirely on the user's own local installation and valid authentication for these CLI tools.
 - **Compliance**: Users are responsible for ensuring their use of underlying CLI tools through Sorcerer complies with the respective providers' Terms of Service. Sorcerer interacts with these tools via standard terminal interfaces (PTY) and does not modify their binary code or internal logic.
 

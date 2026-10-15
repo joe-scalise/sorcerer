@@ -86,8 +86,8 @@ export function AddAgentDialog() {
         name: name.trim(),
         description: description.trim(),
         mission: mode === 'autonomous' ? mission.trim() : '',
-        system_prompt: systemPrompt.trim(),
-        mcp_config: mcpConfig.trim(),
+        system_prompt: selectedProvider?.supportsSystemPrompt ? systemPrompt.trim() : '',
+        mcp_config: selectedProvider?.supportsMcpConfig ? mcpConfig.trim() : '',
         bypass_permissions: bypassPermissions,
         remote_control: mode === 'interactive' ? remoteControl : false,
         auto_start: mode === 'autonomous' ? autoStart : false,
@@ -324,10 +324,11 @@ export function AddAgentDialog() {
                 type="text"
                 placeholder="Path to mcp-config.json"
                 value={mcpConfig}
+                disabled={!selectedProvider?.supportsMcpConfig}
                 onChange={(e) => setMcpConfig(e.target.value)}
               />
               <div className="dialog-hint" style={{ marginTop: 4, marginBottom: 0 }}>
-                Connect external tools via Model Context Protocol servers.
+                {selectedProvider?.supportsMcpConfig ? 'Connect external tools via Model Context Protocol servers.' : 'This provider uses its own MCP configuration.'}
               </div>
             </DialogField>
             <DialogField label="System Prompt">
@@ -335,11 +336,12 @@ export function AddAgentDialog() {
                 className="dialog-input dialog-textarea"
                 placeholder="Custom instructions for this agent..."
                 value={systemPrompt}
+                disabled={!selectedProvider?.supportsSystemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={4}
               />
               <div className="dialog-hint" style={{ marginTop: 4, marginBottom: 0 }}>
-                Appended to agent&apos;s system prompt (if supported).
+                {selectedProvider?.supportsSystemPrompt ? 'Appended to the agent’s system prompt.' : 'This provider uses its own instruction files; this field is unavailable.'}
               </div>
             </DialogField>
           </div>
