@@ -1,6 +1,8 @@
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
+import { CopilotRunner } from './copilot-backend'
+import type { ProviderSessionBackend } from './provider-session-backend'
 
 export interface ProviderCapabilities {
   supportsMcpConfig: boolean
@@ -10,6 +12,10 @@ export interface ProviderCapabilities {
 }
 
 export interface ProviderRunner {
+  sessionBackend?: ProviderSessionBackend
+  usesCliModelDefault?: boolean
+  probeArgs?(): string[]
+  observeHelp?(help: string): void
   id: string
   name: string
   apiKeyEnv: string | null
@@ -340,7 +346,8 @@ const runners: ProviderRunner[] = [
   new ClaudeRunner(),
   new GeminiRunner(),
   new CodexRunner(),
-  new OpenCodeRunner()
+  new OpenCodeRunner(),
+  new CopilotRunner()
 ]
 
 export function getProviderRunner(id: string): ProviderRunner {

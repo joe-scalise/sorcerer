@@ -5,12 +5,13 @@ import fs from 'fs'
 import os from 'os'
 import simpleGit from 'simple-git'
 import initSqlJs from 'sql.js'
+import { prepareCodexRootThreads } from '../services/codex-thread-state'
 import { PTYService } from '../services/pty-service'
 import { DatabaseService } from '../services/database-service'
 import { WorktreeService } from '../services/worktree-service'
 import { FileWatcherService } from '../services/file-watcher-service'
 import { getTerminalOutputTail } from '../services/terminal-output-utils'
-import { getProviderRunner } from '../services/provider-runners'
+import { getProviderRunner, getProviderRunners } from '../services/provider-runners'
 import { getDefaultProviderId, listProviders as listProviderRegistry, refreshProviders as refreshProviderRegistry, resolveLaunchModel } from '../services/provider-registry'
 import { isSafeAutomaticallyAdvertisedIpv4 } from '../server/remote-network'
 
@@ -473,6 +474,16 @@ export async function getSessionResumeHealth(
     return { canResume: true, level: 'ok', reason: null, guidance: [] }
   }
 
+  const sessionBackend = getProviderRunner(provider).sessionBackend
+  if (sessionBackend) {
+    const valid = sessionBackend.validate(session.provider_session_id, cwd)
+    return {
+      canResume: valid, level: valid ? 'ok' : 'warning',
+      reason: valid ? null : `${sessionBackend.label} is missing or does not match this working directory.`,
+      guidance: valid ? [] : ['Import the intended conversation or start a new session. Sign in to the provider CLI if the first launch did not complete.']
+    }
+  }
+
   if (provider === 'claude') {
     const allowCwdRecovery = canRecoverSessionByCwd(db, session)
     const claudeSessionId = session.claude_session_id as string | undefined
@@ -585,12 +596,12 @@ export function getSessionDiagnostics(
     provider === 'claude'
       ? (session.claude_session_id as string | null | undefined) || null
       : (session.provider_session_id as string | null | undefined) || null
-  const providerThreadLabel =
+  const providerThreadLabel = getProviderRunner(provider).sessionBackend?.label || (
     provider === 'codex'
       ? 'Codex Thread'
       : provider === 'claude'
         ? 'Claude Session'
-        : 'Provider Session'
+        : 'Provider Session')
 
   return {
     sessionId: session.id as string,
@@ -990,13 +1001,7 @@ async function listCodexThreadsForCwd(
   const wantedCwd = normalizeComparablePath(cwd)
 
   try {
-    const stmt = stateDb.prepare(`
-      SELECT id, cwd, created_at, updated_at
-      FROM threads
-      WHERE archived = 0 AND source = 'cli'
-      ORDER BY updated_at DESC
-      LIMIT 200
-    `)
+    const stmt = prepareCodexRootThreads(stateDb)
 
     const matches: Array<{ id: string; created_at: number; updated_at: number }> = []
     while (stmt.step()) {
@@ -1155,6 +1160,23 @@ export async function scanImportableSessions(
   const candidates: ExternalSessionImportCandidate[] = []
   const seenCandidateIds = new Set<string>()
 
+  for (const runner of getProviderRunners()) {
+    if (!runner.sessionBackend) continue
+    const linked = new Set(existingSessions.filter((session: any) => session.provider === runner.id).map((session: any) => session.provider_session_id))
+    for (const entry of runner.sessionBackend.discover()) {
+      if (linked.has(entry.id) || !fs.existsSync(entry.cwd)) continue
+      if (targetProject && normalizeComparablePath(targetProject.path as string) !== normalizeComparablePath(entry.cwd)) continue
+      const project = projects.find((item: any) => normalizeComparablePath(item.path) === normalizeComparablePath(entry.cwd))
+      candidates.push({
+        id: `${runner.id}:${entry.id}`, provider: runner.id, providerSessionId: entry.id,
+        title: entry.title, cwd: entry.cwd, createdAt: entry.createdAt, updatedAt: entry.updatedAt,
+        branch: await detectBranchForPath(entry.cwd), model: entry.model,
+        projectId: project?.id || null, projectName: project?.name || path.basename(entry.cwd),
+        projectPath: project?.path || entry.cwd, willCreateProject: !project
+      })
+    }
+  }
+
   const claudeTranscriptSessionsByCwd = new Map<string, ReturnType<typeof readClaudeTranscriptSessions>>()
   const getClaudeTranscriptSessions = (cwd: string) => {
     const normalizedCwd = normalizeComparablePath(cwd)
@@ -1230,13 +1252,7 @@ export async function scanImportableSessions(
   if (stateDbHandle) {
     const { stateDb } = stateDbHandle
     try {
-      const stmt = stateDb.prepare(`
-        SELECT id, cwd, title, created_at, updated_at, model
-        FROM threads
-        WHERE archived = 0 AND source = 'cli'
-        ORDER BY updated_at DESC
-        LIMIT 500
-      `)
+      const stmt = prepareCodexRootThreads(stateDb)
 
       while (stmt.step()) {
         const row = stmt.getAsObject() as {
@@ -1296,6 +1312,8 @@ export async function importExternalSessions(
   const imported: any[] = []
 
   for (const candidate of selected) {
+    const sessionBackend = getProviderRunner(candidate.provider).sessionBackend
+    if (sessionBackend && !sessionBackend.validate(candidate.providerSessionId, candidate.cwd)) continue
     let projectId = candidate.projectId
     if (!projectId) {
       const createdProject = addProjectByPath(services, candidate.projectPath, candidate.projectName)
@@ -1309,7 +1327,12 @@ export async function importExternalSessions(
     let resumeStatus: string | null = null
     let resumeReason: string | null = null
 
-    if (candidate.provider === 'codex') {
+    if (sessionBackend) {
+      providerSessionId = candidate.providerSessionId
+      providerSessionValidatedAt = Math.floor(Date.now() / 1000)
+      providerSessionSource = 'import-validated'
+      resumeStatus = 'ready'
+    } else if (candidate.provider === 'codex') {
       const importedState = await getImportedCodexSessionState(candidate.providerSessionId, candidate.cwd)
       providerSessionId = importedState.providerSessionId
       providerSessionValidatedAt = importedState.providerSessionValidatedAt
@@ -1638,6 +1661,8 @@ export async function createSession(
   const rc = remoteControl ? 1 : 0
   const startedAt = Math.floor(Date.now() / 1000)
   const initialResumeState = getInitialResumeState(resolvedProvider)
+  const runner = getProviderRunner(resolvedProvider)
+  const sessionPlan = runner.sessionBackend?.fresh()
   const session = db.addSession({
     id,
     project_id: projectId,
@@ -1647,11 +1672,11 @@ export async function createSession(
     bypass_permissions: skipPerms ? 1 : 0,
     remote_control: rc,
     claude_session_id: claudeSessionId,
-    provider_session_id: undefined,
+    provider_session_id: sessionPlan?.id,
     started_at: startedAt,
     provider_session_captured_at: null,
     provider_session_validated_at: null,
-    provider_session_source: undefined,
+    provider_session_source: sessionPlan ? 'allocated' : undefined,
     resume_status: initialResumeState.status,
     resume_reason: initialResumeState.reason,
     provider: resolvedProvider,
@@ -1659,13 +1684,14 @@ export async function createSession(
   })
   console.log('[session:create] Session saved:', { id, claudeSessionId, status: session?.status })
 
-  const runner = getProviderRunner(resolvedProvider)
   ensureProviderTrust(resolvedProvider, worktreePath)
 
   const args = runner.getArgs({
     bypassPermissions: skipPerms,
     model: resolvedModel
   })
+
+  if (sessionPlan) args.push(...sessionPlan.args)
 
   // Add provider-specific session pinning
   if (resolvedProvider === 'claude') {
@@ -1902,7 +1928,15 @@ export async function restartSession(
       model: resolvedModel
     })
 
-    if (provider === 'claude') {
+    if (runner.sessionBackend) {
+      const plan = runner.sessionBackend.fresh()
+      args.push(...plan.args)
+      db.updateSession(sessionId, {
+        provider_session_id: plan.id, provider_session_source: 'allocated',
+        provider_session_captured_at: null, provider_session_validated_at: null,
+        resume_status: 'ready', resume_reason: null
+      })
+    } else if (provider === 'claude') {
       const newClaudeSessionId = uuidv4()
       db.updateSession(sessionId, { claude_session_id: newClaudeSessionId })
       args.push('--session-id', newClaudeSessionId)
@@ -1986,7 +2020,11 @@ export async function resumeSession(
 
     let args: string[]
 
-    if (provider === 'claude') {
+    if (runner.sessionBackend) {
+      const plan = runner.sessionBackend.resume(session.provider_session_id, cwd)
+      args = [...runner.getArgs({ bypassPermissions: session.bypass_permissions !== 0, model: resolvedModel }), ...plan.args]
+      db.updateSession(sessionId, { provider_session_validated_at: Math.floor(Date.now() / 1000), resume_status: 'ready', resume_reason: null })
+    } else if (provider === 'claude') {
       const allowCwdRecovery = canRecoverSessionByCwd(db, session)
       let claudeSessionId = session.claude_session_id as string | undefined
       let selectionSource = claudeSessionId ? 'stored' : 'none'
@@ -2432,6 +2470,12 @@ export function startAgent(
     model: resolvedModel
   })
 
+  if (runner.sessionBackend) {
+    const plan = runner.sessionBackend.fresh()
+    args.push(...plan.args)
+    db.updateAgent(agentId, { provider_session_id: plan.id })
+  }
+
   if (provider === 'claude') {
     const claudeSessionId = uuidv4()
     args.push('--session-id', claudeSessionId)
@@ -2464,6 +2508,9 @@ export function resumeAgent(
   const agent = db.getAgent(agentId)
   if (!agent) throw new Error('Agent not found')
 
+  const backend = getProviderRunner(agent.provider || 'claude').sessionBackend
+  const sessionPlan = backend?.resume(agent.provider_session_id, path.join(os.homedir(), '.sorcerer', 'agents', agentId))
+
   if (pty.isRunning(agentId)) {
     pty.kill(agentId)
   }
@@ -2484,6 +2531,8 @@ export function resumeAgent(
     model: resolvedModel,
     hasHistory: true
   })
+
+  if (sessionPlan) args.push(...sessionPlan.args)
 
   if (provider === 'claude') {
     trackResume(agentId)
@@ -2536,6 +2585,12 @@ export function restartAgent(
     model: resolvedModel,
     hasHistory: false
   })
+
+  if (runner.sessionBackend) {
+    const plan = runner.sessionBackend.fresh()
+    args.push(...plan.args)
+    db.updateAgent(agentId, { provider_session_id: plan.id })
+  }
 
   if (provider === 'claude') {
     const claudeSessionId = uuidv4()

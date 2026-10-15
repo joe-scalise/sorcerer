@@ -10,6 +10,7 @@ import { DatabaseService } from './services/database-service'
 import { WorktreeService } from './services/worktree-service'
 import { FileWatcherService } from './services/file-watcher-service'
 import { PopoutService } from './services/popout-service'
+import { getProviderRunner } from './services/provider-runners'
 import { registerIPC, getGlobalApiServer } from './ipc/handlers'
 import { UpdateService } from './services/update-service'
 import { flushUpdateDrafts } from './services/update-restart'
@@ -390,6 +391,16 @@ async function createWindow(): Promise<void> {
 
       if (session) {
         persistSessionExitSummary(dbService, sessionId, scrollbackText, exitCode)
+        const backend = getProviderRunner(session.provider || 'claude').sessionBackend
+        if (backend && session.type !== 'quick-terminal') {
+          const cwd = resolveSessionWorkingDirectory(dbService, session, { allowProjectFallback: true })
+          const valid = !!cwd && backend.validate(session.provider_session_id, cwd)
+          dbService.updateSession(sessionId, {
+            resume_status: valid ? 'ready' : 'degraded',
+            resume_reason: valid ? null : `${backend.label} was not saved or no longer matches the working directory.`,
+            provider_session_validated_at: valid ? Math.floor(Date.now() / 1000) : null
+          })
+        }
       }
     } catch (err) {
       console.error(`[pty-exit] ${sessionId}: failed to persist exit state`, err)

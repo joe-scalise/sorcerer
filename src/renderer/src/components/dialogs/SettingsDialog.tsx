@@ -1157,7 +1157,7 @@ function ProvidersTab() {
                 <div className="provider-card-meta">
                   {provider.binaryPath || 'CLI not found'}
                   {provider.apiKeyEnv ? ` • ${provider.apiKeyEnv}` : ''}
-                  {provider.usesFallbackModels ? ' • bundled model suggestions' : ' • detected model suggestions'}
+                  {provider.models.length === 0 ? ' • CLI default model; use /model in the terminal' : provider.usesFallbackModels ? ' • bundled model suggestions' : ' • detected model suggestions'}
                 </div>
               </div>
 

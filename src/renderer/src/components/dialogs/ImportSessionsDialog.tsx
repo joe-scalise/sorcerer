@@ -37,7 +37,8 @@ function getTimestampMeta(candidate: ExternalSessionImportCandidate): string[] {
 
 const PROVIDER_LABELS: Record<string, string> = {
   claude: 'Claude Code',
-  codex: 'Codex'
+  codex: 'Codex',
+  copilot: 'GitHub Copilot CLI'
 }
 
 function formatProvider(provider: string): string {

@@ -119,7 +119,10 @@ export class AgentOrchestrator {
       const nextRunAt = lastRun + intervalSeconds
 
       if (now >= nextRunAt) {
-        this.runAgent(agent)
+        try { this.runAgent(agent) } catch (error) {
+          console.error(`[orchestrator] Failed to launch agent ${agent.id}:`, error)
+          this.db.updateAgent(agent.id, { status: 'idle', pid: null, last_run_at: now })
+        }
       }
     }
   }
@@ -150,17 +153,28 @@ export class AgentOrchestrator {
       model: resolvedModel
     })
 
+    if (runner.sessionBackend) {
+      const plan = agent.provider_session_id
+        ? runner.sessionBackend.resume(agent.provider_session_id, cwd)
+        : runner.sessionBackend.fresh()
+      args.push(...plan.args)
+      this.db.updateAgent(agentId, { provider_session_id: plan.id })
+    }
+
     const startedAt = Math.floor(Date.now() / 1000)
     const running = { agentId, startedAt }
     this.runningAgents.set(agentId, running)
 
     console.log(`[orchestrator] Running agent: ${agent.name} (provider: ${providerId}, ${hasHistory ? 'continue' : 'fresh'})`)
 
-    this.pty.spawn(agentId, cwd, {
-      command: runner.resolveBinary(),
-      args,
-      env: runner.getEnv(agentId)
-    })
+    try {
+      this.pty.spawn(agentId, cwd, {
+        command: runner.resolveBinary(), args, env: runner.getEnv(agentId)
+      })
+    } catch (error) {
+      this.runningAgents.delete(agentId)
+      throw error
+    }
     if (resolvedModel !== (agent.model as string)) {
       this.db.updateAgent(agentId, { model: resolvedModel })
     }

@@ -4,6 +4,8 @@
 **Status:** Proposed
 **Priority:** High
 
+**Implementation update (2026-10-15):** Copilot introduces the incremental `ProviderSessionBackend` facet alongside existing runners. It returns session plans and owns identity validation/import metadata; host code owns persistence and PTYs. See [the current provider guide](../providers.md) and [Copilot implementation design](2026-10-15-copilot-cli-design.md). The complete migration described below remains proposed.
+
 ## Summary
 
 Sorcerer should not optimize for a purely provider-agnostic "spawn any CLI the same way" architecture.
