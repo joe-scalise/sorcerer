@@ -5,6 +5,7 @@ import fs from 'fs'
 import os from 'os'
 import simpleGit from 'simple-git'
 import initSqlJs from 'sql.js'
+import { prepareCodexRootThreads } from '../services/codex-thread-state'
 import { PTYService } from '../services/pty-service'
 import { DatabaseService } from '../services/database-service'
 import { WorktreeService } from '../services/worktree-service'
@@ -990,13 +991,7 @@ async function listCodexThreadsForCwd(
   const wantedCwd = normalizeComparablePath(cwd)
 
   try {
-    const stmt = stateDb.prepare(`
-      SELECT id, cwd, created_at, updated_at
-      FROM threads
-      WHERE archived = 0 AND source = 'cli'
-      ORDER BY updated_at DESC
-      LIMIT 200
-    `)
+    const stmt = prepareCodexRootThreads(stateDb)
 
     const matches: Array<{ id: string; created_at: number; updated_at: number }> = []
     while (stmt.step()) {
@@ -1230,13 +1225,7 @@ export async function scanImportableSessions(
   if (stateDbHandle) {
     const { stateDb } = stateDbHandle
     try {
-      const stmt = stateDb.prepare(`
-        SELECT id, cwd, title, created_at, updated_at, model
-        FROM threads
-        WHERE archived = 0 AND source = 'cli'
-        ORDER BY updated_at DESC
-        LIMIT 500
-      `)
+      const stmt = prepareCodexRootThreads(stateDb)
 
       while (stmt.step()) {
         const row = stmt.getAsObject() as {
