@@ -41,7 +41,7 @@ const SHORTCUTS = [
   { keys: 'Ctrl + W', action: 'Close focused panel' },
   { keys: 'Ctrl + Shift + M', action: 'Maximize focused panel' },
   { keys: 'Escape', action: 'Clear search / refocus terminal' },
-  { keys: 'Alt + ↑ / ↓', action: 'Navigate sessions' },
+  { keys: 'Ctrl + Alt + ↑ / ↓', action: 'Navigate sessions' },
   { keys: 'Ctrl + Shift + N', action: 'Toggle quick notes' },
   { keys: 'Ctrl + I', action: 'Dictation input overlay' },
   { keys: 'F2', action: 'Rename selected item' },

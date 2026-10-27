@@ -117,8 +117,10 @@ export function useKeyboardShortcuts() {
       // Don't fire shortcuts when a dialog is open
       if (activeDialog || useUIStore.getState().contextMenu || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return
 
-      // Alt+↑ / Alt+↓ — navigate sessions/agents
-      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Ctrl+Alt+↑ / Ctrl+Alt+↓ — navigate sessions/agents.
+      // Alt+↑/↓ belongs to terminal applications, including Codex questions.
+      if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey &&
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault()
         const ids = getNavigableIds()
         if (ids.length === 0) return

@@ -74,8 +74,33 @@ describe('standalone Agent navigation', () => {
   })
 
   function next() {
-    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, cancelable: true })))
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, altKey: true, cancelable: true })))
   }
+
+  it.each([
+    { key: 'ArrowUp', altKey: true },
+    { key: 'ArrowDown', altKey: true },
+    { key: 'ArrowLeft', shiftKey: true },
+    { key: 'ArrowRight', shiftKey: true },
+    { key: 'Tab', shiftKey: true },
+    { key: 'ArrowDown', altKey: true, ctrlKey: true, shiftKey: true },
+    { key: 'ArrowDown', altKey: true, ctrlKey: true, metaKey: true }
+  ])('leaves terminal input alone: %j', (input) => {
+    const event = new KeyboardEvent('keydown', { ...input, bubbles: true, cancelable: true })
+    act(() => host.querySelector('textarea')!.dispatchEvent(event))
+    expect(event.defaultPrevented).toBe(false)
+    expect(mocks.session.setActiveSession).not.toHaveBeenCalled()
+    expect(mocks.ui.openDialog).not.toHaveBeenCalled()
+  })
+
+  it('navigates from a focused terminal with Ctrl+Alt+Down', () => {
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowDown', altKey: true, ctrlKey: true, bubbles: true, cancelable: true
+    })
+    act(() => host.querySelector('textarea')!.dispatchEvent(event))
+    expect(event.defaultPrevented).toBe(true)
+    expect(mocks.session.setActiveSession).toHaveBeenCalledWith('project-session')
+  })
 
   it('navigates directly to Projects while saved standalone Agents are disabled', () => {
     next()

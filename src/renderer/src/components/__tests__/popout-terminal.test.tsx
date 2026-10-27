@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PopoutTerminal } from '../../PopoutApp'
+import { TerminalView, disposeTerminal } from '../TerminalView'
 
 const mocks = vi.hoisted(() => ({
   instances: [] as any[],
@@ -10,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
   scrollback: vi.fn(),
   settings: vi.fn(),
-  resize: vi.fn()
+  resize: vi.fn(),
+  write: vi.fn()
 }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}
@@ -32,6 +34,7 @@ vi.mock('../../api/client', () => ({ getApi: () => ({
   settings: { get: mocks.settings },
   popout: { getScrollback: mocks.scrollback, notifySessionUpdated: vi.fn() },
   terminal: {
+    write: mocks.write,
     resize: mocks.resize,
     onData: () => mocks.unsubscribe,
     onExit: (_id: string, callback: (code: number) => void) => {
@@ -58,8 +61,49 @@ beforeEach(() => {
 })
 afterEach(() => {
   act(() => root.unmount())
+  disposeTerminal('keyboard-test')
   host.remove()
   vi.unstubAllGlobals()
+})
+
+it.each(['main', 'popout'] as const)('preserves Codex question keys in the %s terminal', async (surface) => {
+  await act(async () => root.render(surface === 'main'
+    ? <TerminalView sessionId="keyboard-test" />
+    : <PopoutTerminal sessionId="keyboard-test" onExited={() => {}} />))
+  const terminal = mocks.instances[0]
+  const handler = terminal.attachCustomKeyEventHandler.mock.calls[0][0]
+  const onData = terminal.onData.mock.calls[0][0]
+  const keys: Array<[string, KeyboardEventInit, string]> = [
+    ['ArrowLeft', { shiftKey: true }, '\x1b[1;2D'],
+    ['ArrowRight', { shiftKey: true }, '\x1b[1;2C'],
+    ['ArrowUp', { altKey: true }, '\x1b[1;3A'],
+    ['ArrowDown', { altKey: true }, '\x1b[1;3B'],
+    ['Tab', {}, '\t'],
+    ['Tab', { shiftKey: true }, '\x1b[Z'],
+    ['ArrowUp', {}, '\x1b[A'],
+    ['ArrowDown', {}, '\x1b[B'],
+    ['Enter', {}, '\r'],
+    ['Escape', {}, '\x1b']
+  ]
+  for (const [key, modifiers, data] of keys) {
+    for (const type of ['keydown', 'keyup']) {
+      const event = new KeyboardEvent(type, { key, ...modifiers, cancelable: true })
+      expect(handler(event), `${type}: ${key}`).toBe(true)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    // xterm's encoded input must reach the session's PTY unchanged.
+    onData(data)
+    expect(mocks.write).toHaveBeenLastCalledWith('keyboard-test', data)
+  }
+  expect(mocks.write).toHaveBeenCalledTimes(keys.length)
+  if (surface === 'main') {
+    const navigation = new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, altKey: true })
+    expect(handler(navigation)).toBe(false)
+    expect(navigation.defaultPrevented).toBe(false) // window shortcut owns it
+    expect(handler(new KeyboardEvent('keydown', {
+      key: 'ArrowDown', ctrlKey: true, altKey: true, shiftKey: true
+    }))).toBe(true)
+  }
 })
 
 it('keeps the terminal and subscriptions across metadata renders and uses the latest exit handler', async () => {
