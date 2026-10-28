@@ -2,6 +2,37 @@ import type { SVGProps } from 'react'
 
 type IconProps = SVGProps<SVGSVGElement>
 
+export function DownloadIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" />
+  </svg>
+}
+
+export function InboxIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M4 4h16l2 11v5H2v-5L4 4Z" />
+    <path d="M2 15h6l2 3h4l2-3h6" />
+  </svg>
+}
+
+export function PinIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="m16 3 5 5-4 2-3 5-2-2-5 5-1-1 5-5-2-2 5-3 2-4Z" />
+  </svg>
+}
+
+export function CheckIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="m5 12 4 4L19 6" />
+  </svg>
+}
+
+export function RestoreIcon(props: IconProps) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M3 10a9 9 0 1 1 1 8M3 4v6h6" />
+  </svg>
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>

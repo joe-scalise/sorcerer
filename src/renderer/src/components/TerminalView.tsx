@@ -122,6 +122,10 @@ export function TerminalView({ sessionId, isFocused }: TerminalViewProps) {
       // Also handle Ctrl+V paste explicitly — xterm's built-in paste can fail
       // in Electron when switching between split panels
       terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        // This is a workspace shortcut only when the main window has an inbox.
+        if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'i' && e.type === 'keydown' && document.querySelector('[data-inbox]')) {
+          return false
+        }
         if (e.ctrlKey && e.key === 'i' && e.type === 'keydown') {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('sorcerer:dictation', { detail: sessionId }))

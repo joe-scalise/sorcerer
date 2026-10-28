@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { UpdateAPI, UpdateState } from '../shared/update'
+import type { InboxCreateInput, InboxUpdateInput, InboxItem } from '../shared/inbox'
 
 export interface RemoteStatus {
   running: boolean
@@ -196,6 +197,14 @@ const api = {
     scanOrphanAgents: () => ipcRenderer.invoke('workspace:scan-orphan-agents'),
     dismissOrphanAgent: (dirName: string) => ipcRenderer.invoke('workspace:dismiss-orphan-agent', dirName),
     deleteOrphanAgent: (dirName: string) => ipcRenderer.invoke('workspace:delete-orphan-agent', dirName)
+  },
+
+  inbox: {
+    list: () => ipcRenderer.invoke('inbox:list') as Promise<InboxItem[]>,
+    create: (input: InboxCreateInput) => ipcRenderer.invoke('inbox:create', input) as Promise<InboxItem>,
+    update: (id: string, input: InboxUpdateInput) => ipcRenderer.invoke('inbox:update', id, input) as Promise<InboxItem>,
+    reorder: (id: string, targetId: string) => ipcRenderer.invoke('inbox:reorder', id, targetId) as Promise<InboxItem[]>,
+    delete: (id: string) => ipcRenderer.invoke('inbox:delete', id) as Promise<void>
   },
 
   quickNotes: {

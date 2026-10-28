@@ -29,6 +29,7 @@ Requires a supported AI CLI tool installed, such as [Claude Code](https://docs.a
 - **Projects-first workspace** — Organize coding sessions and terminals around your projects
 - **Session recovery** — Resume previous sessions, detect orphaned worktrees, recover from crashes
 - **Quick Notes** — Per-session scratchpad that persists across restarts
+- **Personal Inbox** — Capture ideas and to-dos in a collapsible right dock, with optional projects, pins, manual done/archive actions, and CSV export of the current view. Press `Ctrl+Shift+I` to capture; inbox items stay independent of sessions.
 - **Remote access** — Built-in HTTP + WebSocket server with token auth for browser-based access
 - **Android companion** — Pair a sideloaded, device-scoped remote-control app over a trusted LAN or VPN
 - **Cross-platform** — Windows, macOS, and Linux

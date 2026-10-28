@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts'
+import { useInboxStore } from '../../stores/useInboxStore'
 
 const mocks = vi.hoisted(() => ({
   features: { standaloneAgents: false },
@@ -23,7 +24,7 @@ let root: Root
 let host: HTMLDivElement
 function Shortcuts() {
   useKeyboardShortcuts()
-  return <><div className="xterm"><textarea /></div><input className="search-input" /><div id="menu" tabIndex={0} /></>
+  return <><div className="xterm"><textarea /></div><input className="search-input" /><div id="menu" tabIndex={0} /><aside data-inbox><button id="inbox-control">Inbox</button></aside></>
 }
 beforeEach(() => {
   ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
@@ -48,6 +49,23 @@ function escape(target: HTMLElement) {
   act(() => target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
 }
 describe('Escape routing', () => {
+  it('leaves workspace shortcuts and Escape to the inbox while its controls have focus', () => {
+    const control = host.querySelector('#inbox-control') as HTMLElement
+    escape(control)
+    act(() => control.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true, cancelable: true })))
+    expect(mocks.session.deleteSession).not.toHaveBeenCalled()
+    expect(mocks.ui.openDialog).not.toHaveBeenCalled()
+  })
+
+  it('opens capture with Ctrl+Shift+I while a terminal has focus', () => {
+    useInboxStore.setState({ collapsed: true, focusRequest: 0 })
+    const event = new KeyboardEvent('keydown', { key: 'I', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
+    act(() => host.querySelector('textarea')!.dispatchEvent(event))
+    expect(event.defaultPrevented).toBe(true)
+    expect(useInboxStore.getState()).toMatchObject({ collapsed: false, focusRequest: 1 })
+    expect(mocks.ui.openDialog).not.toHaveBeenCalled()
+  })
+
   it('does not delete the active quick terminal when Escape is typed in it', () => {
     escape(host.querySelector('textarea')!)
     expect(mocks.session.deleteSession).not.toHaveBeenCalled()

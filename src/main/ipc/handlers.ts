@@ -1,4 +1,6 @@
 import { getFeatureFlags, requireStandaloneAgents } from '../services/features'
+import { listInboxItems, createInboxItem, updateInboxItem, reorderInboxItem, deleteInboxItem } from './inbox-handlers'
+import type { InboxCreateInput, InboxUpdateInput } from '../../shared/inbox'
 import { ipcMain, dialog, shell, app } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import os from 'os'
@@ -718,6 +720,12 @@ export function registerIPC(
   ipcMain.handle('settings:set', (_event, key: string, value: string) => {
     return setSetting(services, key, value)
   })
+
+  ipcMain.handle('inbox:list', () => listInboxItems(services))
+  ipcMain.handle('inbox:create', (_event, input: InboxCreateInput) => createInboxItem(services, input))
+  ipcMain.handle('inbox:update', (_event, id: string, input: InboxUpdateInput) => updateInboxItem(services, id, input))
+  ipcMain.handle('inbox:reorder', (_event, id: string, targetId: string) => reorderInboxItem(services, id, targetId))
+  ipcMain.handle('inbox:delete', (_event, id: string) => deleteInboxItem(services, id))
 
   // ── Quick Notes ─────────────────────────────────────────────
 

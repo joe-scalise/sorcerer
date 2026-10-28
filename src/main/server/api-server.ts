@@ -1,4 +1,6 @@
 import { FeatureDisabledError, getFeatureFlags, requireStandaloneAgents } from '../services/features'
+import { listInboxItems, createInboxItem, updateInboxItem, reorderInboxItem, deleteInboxItem } from '../ipc/inbox-handlers'
+import type { InboxCreateInput, InboxUpdateInput } from '../../shared/inbox'
 import http from 'http'
 import crypto from 'crypto'
 import fs from 'fs'
@@ -462,6 +464,12 @@ export class ApiServer {
       'teams:list': () => listTeams(s),
       'teams:tasks': (teamName: string) => getTeamTasks(s, teamName),
       'teams:inbox': (teamName: string, agentName: string) => getTeamInbox(s, teamName, agentName),
+
+      'inbox:list': () => listInboxItems(s),
+      'inbox:create': (input: InboxCreateInput) => createInboxItem(s, input),
+      'inbox:update': (id: string, input: InboxUpdateInput) => updateInboxItem(s, id, input),
+      'inbox:reorder': (id: string, targetId: string) => reorderInboxItem(s, id, targetId),
+      'inbox:delete': (id: string) => deleteInboxItem(s, id),
 
       // Quick Notes
       'quick-notes:load': (parentId: string, parentType: string) => loadQuickNote(s, parentId, parentType),

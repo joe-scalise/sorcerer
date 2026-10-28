@@ -1,0 +1,103 @@
+/* Personal inbox — a quiet companion on the opposite edge of the workspace. */
+.inbox-panel {
+  flex: 0 0 var(--inbox-width, 320px);
+  width: var(--inbox-width, 320px);
+  position: relative;
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  z-index: 10;
+}
+.inbox-panel--collapsed { flex-basis: 48px; width: 48px; }
+.inbox-resize-handle { position: absolute; top: var(--titlebar-height); bottom: 0; left: -3px; width: 6px; cursor: col-resize; z-index: 2; }
+.inbox-resize-handle:hover, .inbox-resize-handle:focus-visible { background: var(--accent-border-strong); outline: none; }
+.inbox-window-spacer { height: var(--titlebar-height); flex-shrink: 0; background: var(--bg-root); border-bottom: 1px solid var(--border-subtle); -webkit-app-region: drag; }
+.inbox-content { min-height: 0; flex: 1; display: flex; flex-direction: column; border-left: 1px solid var(--border-subtle); }
+.inbox-content[hidden], .inbox-rail[hidden] { display: none; }
+.inbox-panel button, .inbox-panel input, .inbox-panel textarea, .inbox-panel select { font: inherit; }
+.inbox-panel button { cursor: pointer; }
+.inbox-panel button:disabled { cursor: default; opacity: 0.5; }
+.inbox-panel :is(button, input, textarea, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.inbox-panel input, .inbox-panel textarea, .inbox-panel select { color: var(--text-primary); caret-color: var(--accent); }
+.inbox-panel input::placeholder, .inbox-panel textarea::placeholder { color: var(--text-secondary); opacity: 1; }
+.inbox-panel select { min-width: 0; max-width: 100%; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-root); padding: 6px 24px 6px 8px; font-size: 11px; text-overflow: ellipsis; }
+.inbox-panel select option { background: var(--bg-root); color: var(--text-primary); }
+.inbox-header { display: flex; align-items: center; justify-content: space-between; padding: 15px 14px 12px 18px; }
+.inbox-header > div { display: flex; align-items: center; gap: 9px; }
+.inbox-header > div > svg { width: 17px; height: 17px; color: var(--accent); }
+.inbox-header-actions { display: flex; align-items: center; gap: 2px; }
+.inbox-header h2 { font-size: 14px; font-weight: 600; }
+.inbox-count { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.inbox-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); }
+.inbox-icon-button svg { width: 15px; height: 15px; }
+.inbox-icon-button:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
+.inbox-icon-button.is-active, .inbox-icon-button.is-active:hover:not(:disabled) { color: var(--accent); background: transparent; }
+.inbox-icon-button.is-active svg { fill: var(--accent); }
+.inbox-drag-handle { flex-shrink: 0; width: 18px; height: 28px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); cursor: grab !important; padding: 3px; }
+.inbox-drag-handle svg { width: 12px; height: 16px; }
+.inbox-drag-handle:active { cursor: grabbing !important; }
+.inbox-drag-handle:hover { color: var(--text-primary); background: var(--bg-hover); }
+.inbox-composer { margin: 0 14px 18px; padding: 11px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-root); }
+.inbox-composer[hidden] { display: none; }
+.inbox-composer:focus-within { border-color: var(--accent-border-heavy); }
+.inbox-composer > textarea { display: block; width: 100%; min-height: 45px; max-height: 110px; resize: vertical; border: 0; background: transparent; font-size: 13px; line-height: 1.6; }
+.inbox-composer > textarea:focus-visible { outline-offset: 2px; }
+.inbox-composer > .inbox-composer-details { margin-top: 10px; min-height: 65px; max-height: 150px; padding-top: 8px; border-top: 1px solid var(--border-subtle); font-size: 12px; }
+.inbox-composer-options { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
+.inbox-composer-options select { max-width: 65%; }
+.inbox-text-button { border: 0; border-radius: var(--radius-sm); background: transparent; padding: 5px 3px; color: var(--text-secondary); font-size: 11px !important; }
+.inbox-text-button:hover:not(:disabled) { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.inbox-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.inbox-composer-footer > span { color: var(--text-secondary); font-size: 10px; }
+.inbox-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-contrast); padding: 7px 10px; font-size: 11px !important; font-weight: 600 !important; white-space: nowrap; }
+.inbox-primary-button svg { width: 13px; height: 13px; }
+.inbox-primary-button:hover:not(:disabled) { background: var(--accent-dim); }
+.inbox-navigation { padding: 0 14px; }
+.inbox-project-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 11px; }
+.inbox-project-filter select { flex: 1; max-width: 76%; }
+.inbox-views { display: flex; gap: 14px; margin-top: 13px; border-bottom: 1px solid var(--border-subtle); }
+.inbox-views button { position: relative; display: flex; align-items: center; gap: 5px; padding: 8px 0 10px; border: 0; border-radius: 0; background: transparent; font-size: 11px; color: var(--text-secondary); }
+.inbox-views button:hover { color: var(--text-primary); }
+.inbox-views button.is-selected { color: var(--text-primary); }
+.inbox-views button.is-selected::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); }
+.inbox-views button span { color: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.inbox-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px; scrollbar-width: thin; scrollbar-color: var(--border-medium) transparent; }
+.inbox-item { padding: 15px 0 11px; border-bottom: 1px solid var(--border-subtle); }
+.inbox-item-heading { display: flex; align-items: flex-start; gap: 7px; }
+.inbox-item-title { flex: 1; min-width: 0; padding: 3px 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12.5px !important; line-height: 1.55; font-weight: 500 !important; }
+.inbox-item-title:hover:not(:disabled) { color: var(--accent); }
+.inbox-item-body { margin-top: 5px; color: var(--text-secondary); font-size: 11.5px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.inbox-item--done .inbox-item-title { color: var(--text-secondary); }
+.inbox-item-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.inbox-item-meta time { flex-shrink: 0; color: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.inbox-project-name { max-width: 55%; padding: 2px 5px; border-radius: 3px; background: var(--bg-hover); color: var(--text-secondary); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-item-actions { display: flex; margin-left: auto; }
+.inbox-item-actions .inbox-icon-button { width: 27px; height: 27px; }
+.inbox-delete-button:hover:not(:disabled) { color: var(--danger); }
+.inbox-delete-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 11px; color: var(--text-secondary); }
+.inbox-delete-confirm span { margin-right: auto; }
+.inbox-delete-confirm-button { color: var(--danger-text-soft); }
+.inbox-editor { display: flex; flex-direction: column; gap: 12px; }
+.inbox-editor label { display: flex; flex-direction: column; gap: 5px; color: var(--text-secondary); font-size: 11px; }
+.inbox-editor input, .inbox-editor textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-root); font-size: 12px; line-height: 1.6; }
+.inbox-editor textarea { resize: vertical; min-height: 80px; max-height: 230px; }
+.inbox-editor-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.inbox-retained-edit { max-height: 45%; overflow-y: auto; margin: 10px 14px; padding: 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); }
+.inbox-retained-edit > p { margin-bottom: 12px; font-size: 11px; color: var(--text-secondary); }
+.inbox-error { margin-top: 8px; font-size: 11px; line-height: 1.6; color: var(--danger-text-soft); overflow-wrap: anywhere; }
+.inbox-load-error { padding: 12px 14px; color: var(--danger-text-soft); font-size: 11px; line-height: 1.6; }
+.inbox-loading { padding: 24px 4px; color: var(--text-secondary); font-size: 12px; }
+.inbox-empty { padding: 34px 8px; }
+.inbox-empty > svg { width: 25px; height: 25px; color: var(--text-secondary); margin-bottom: 15px; }
+.inbox-empty h3 { color: var(--text-primary); font-size: 13px; font-weight: 500; line-height: 1.5; }
+.inbox-empty p { max-width: 30ch; margin-top: 8px; color: var(--text-secondary); font-size: 11.5px; line-height: 1.75; }
+.inbox-rail { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 14px; border-left: 1px solid var(--border-subtle); }
+.inbox-rail-toggle { position: relative; width: 32px; height: 42px; flex-direction: column; gap: 6px; }
+.inbox-rail-toggle > svg { width: 17px; height: 17px; }
+.inbox-rail-count { color: var(--accent); font-size: 10px; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  .inbox-panel:not(.inbox-panel--collapsed) { position: absolute; inset: 0 0 0 auto; width: min(var(--inbox-width, 320px), calc(100vw - 52px)); box-shadow: -12px 0 32px var(--shadow-strong); }
+}
