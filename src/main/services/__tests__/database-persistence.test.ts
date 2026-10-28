@@ -70,6 +70,17 @@ describe('atomic database persistence', () => {
     expect(db.getSession('s')).toBeUndefined()
   })
 
+  it('restores an in-memory session when saving its deletion fails', () => {
+    db.addProject('p', 'Project', '/test-project')
+    db.addSession({ id: 's', project_id: 'p', name: 'Session', branch: 'branch', worktree_path: '/test-worktree' })
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw new Error('disk failure') })
+    expect(() => db.removeSession('s')).toThrow('disk failure')
+    expect(db.getSession('s')).toBeDefined()
+    vi.restoreAllMocks()
+    db.setSetting('later-save', 'value')
+    expect(db.getSession('s')).toBeDefined()
+  })
+
   it('leaves the saved database untouched if exporting fails', async () => {
     const internal = db as unknown as { db: { export: () => Uint8Array } }
     vi.spyOn(internal.db, 'export').mockImplementationOnce(() => { throw new Error('export failed') })

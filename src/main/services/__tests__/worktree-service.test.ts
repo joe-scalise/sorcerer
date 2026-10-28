@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mockedHome = vi.hoisted(() => ({ path: '' }))
 vi.mock('os', () => ({ default: { homedir: () => mockedHome.path } }))
 import { WorktreeService } from '../worktree-service'
-import { landOnMain, type HandlerServices } from '../../ipc/shared-handlers'
+import { deleteSession, landOnMain, type HandlerServices } from '../../ipc/shared-handlers'
 
 const tempRoot = path.resolve(process.env.TEMP || process.env.TMP || process.cwd())
 let project: string
@@ -174,5 +174,36 @@ describe('worktree data preservation', { timeout: 30_000 }, () => {
     expect(result).toMatchObject({ merged: true, warning: expect.stringContaining('push failed') })
     expect(fs.readFileSync(path.join(project, 'file.txt'), 'utf8')).toBe('feature\n')
     expect(await git.revparse(['main'])).not.toBe(await git.revparse(['origin/main']))
+  })
+
+  it('keeps the workspace and branch when saving session deletion fails', async () => {
+    const created = await createChangedBranch()
+    const db = { getSession: () => ({ project_id: 'p', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), removeSession: vi.fn(() => { throw new Error('unable to open database file') }) }
+    const pty = { isRunning: () => false }
+    await expect(deleteSession({ db, pty, worktree: service } as unknown as HandlerServices, 's')).rejects.toThrow('workspace and branch were kept')
+    expect(fs.existsSync(created.worktreePath)).toBe(true)
+    expect(await simpleGit(project).revparse([created.branch])).toBeTruthy()
+  })
+
+  it('removes the workspace only after saving the deletion and keeps the branch', async () => {
+    const created = await createChangedBranch()
+    const db = { getSession: () => ({ project_id: 'p', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), removeSession: vi.fn(() => expect(fs.existsSync(created.worktreePath)).toBe(true)) }
+    const pty = { isRunning: () => false }
+    await deleteSession({ db, pty, worktree: service } as unknown as HandlerServices, 's')
+    expect(db.removeSession).toHaveBeenCalledOnce()
+    expect(fs.existsSync(created.worktreePath)).toBe(false)
+    expect(await simpleGit(project).revparse([created.branch])).toBeTruthy()
+  })
+
+  it('refuses to delete the running app workspace before stopping its session', async () => {
+    const created = await createChangedBranch()
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(created.worktreePath)
+    const pty = { isRunning: vi.fn(() => true), killSessionAndWait: vi.fn() }
+    const db = { getSession: () => ({ project_id: 'p', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), removeSession: vi.fn() }
+    try {
+      await expect(deleteSession({ db, pty, worktree: service } as unknown as HandlerServices, 's')).rejects.toThrow('running from this workspace')
+      expect(pty.killSessionAndWait).not.toHaveBeenCalled()
+      expect(db.removeSession).not.toHaveBeenCalled()
+    } finally { cwd.mockRestore() }
   })
 })

@@ -208,6 +208,15 @@ jobs:
             node scripts/smoke-app.cjs --packaged
           fi
 
+      - name: Smoke test shared database instance lock
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a node scripts/smoke-instance-lock.cjs
+          else
+            node scripts/smoke-instance-lock.cjs
+          fi
+
       - name: Upload app smoke screenshot
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
