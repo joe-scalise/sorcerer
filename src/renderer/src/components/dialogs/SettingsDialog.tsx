@@ -4,6 +4,7 @@ import type { PairedDevice, RemotePairingCode } from '../../../../preload'
 import { getApi, isElectron } from '../../api/client'
 import { useUIStore } from '../../stores/useUIStore'
 import { useToastStore } from '../../stores/useToastStore'
+import { useInboxStore } from '../../stores/useInboxStore'
 import {
   TerminalIcon, GitBranchIcon, SettingsIcon, UserIcon, WifiIcon, CopyIcon, RefreshIcon, EyeIcon, EyeOffIcon, PaletteIcon, SmartphoneIcon, BotIcon, KeyboardIcon, TrashIcon
 } from '../icons'
@@ -41,8 +42,9 @@ const SHORTCUTS = [
   { keys: 'Ctrl + W', action: 'Close focused panel' },
   { keys: 'Ctrl + Shift + M', action: 'Maximize focused panel' },
   { keys: 'Escape', action: 'Clear search / refocus terminal' },
-  { keys: 'Alt + ↑ / ↓', action: 'Navigate sessions' },
+  { keys: 'Ctrl + Alt + ↑ / ↓', action: 'Navigate sessions' },
   { keys: 'Ctrl + Shift + N', action: 'Toggle quick notes' },
+  { keys: 'Ctrl + Shift + I', action: 'Open inbox and capture a thought' },
   { keys: 'Ctrl + I', action: 'Dictation input overlay' },
   { keys: 'F2', action: 'Rename selected item' },
   { keys: 'Ctrl + Shift + B', action: 'Toggle briefing panel' }
@@ -968,6 +970,8 @@ function StandaloneAgentsSetting() {
 }
 
 function GeneralTab() {
+  const inboxEnabled = useInboxStore((state) => state.enabled)
+  const setInboxEnabled = useInboxStore((state) => state.setEnabled)
   const [checkUpdates, setCheckUpdates] = useSetting('checkForUpdates', 'true')
   const [autoDownload, setAutoDownload] = useSetting('autoDownloadUpdates', 'true')
   const { showFeedbackIcon, setShowFeedbackIcon, resetSidebarLayout } = useUIStore()
@@ -994,6 +998,9 @@ function GeneralTab() {
       {isElectron && <StandaloneAgentsSetting />}
 
       <SectionTitle>Interface</SectionTitle>
+      <SettingRow label="Show inbox" description="Show the inbox panel on the right side of the workspace">
+        <Toggle checked={inboxEnabled} onChange={setInboxEnabled} label="Show inbox" />
+      </SettingRow>
       <SettingRow label="Show feedback button" description="Display the Give feedback shortcut in the sidebar footer">
         <Toggle
           checked={showFeedbackIcon}

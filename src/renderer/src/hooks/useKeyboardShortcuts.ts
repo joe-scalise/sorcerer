@@ -8,6 +8,7 @@ import { findLeaf } from '../stores/useUIStore'
 import { useQuickNotesStore } from '../stores/useQuickNotesStore'
 import { useToastStore } from '../stores/useToastStore'
 import { focusTerminal } from '../components/TerminalView'
+import { useInboxStore } from '../stores/useInboxStore'
 
 /** Refocus the active session's terminal */
 function focusActiveTerminal(): void {
@@ -117,8 +118,19 @@ export function useKeyboardShortcuts() {
       // Don't fire shortcuts when a dialog is open
       if (activeDialog || useUIStore.getState().contextMenu || e.defaultPrevented || document.querySelector('[role="dialog"][aria-modal="true"]')) return
 
-      // Alt+↑ / Alt+↓ — navigate sessions/agents
-      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'i') {
+        if (!useInboxStore.getState().enabled) return
+        e.preventDefault()
+        useInboxStore.getState().openCapture()
+        return
+      }
+      // Inbox controls own their keys; Escape here must never close a terminal.
+      if ((e.target as HTMLElement | null)?.closest?.('[data-inbox]')) return
+
+      // Ctrl+Alt+↑ / Ctrl+Alt+↓ — navigate sessions/agents.
+      // Alt+↑/↓ belongs to terminal applications, including Codex questions.
+      if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey &&
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault()
         const ids = getNavigableIds()
         if (ids.length === 0) return

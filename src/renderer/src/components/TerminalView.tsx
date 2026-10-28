@@ -122,6 +122,10 @@ export function TerminalView({ sessionId, isFocused }: TerminalViewProps) {
       // Also handle Ctrl+V paste explicitly — xterm's built-in paste can fail
       // in Electron when switching between split panels
       terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        // This is a workspace shortcut only when the main window has an inbox.
+        if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'i' && e.type === 'keydown' && document.querySelector('[data-inbox]')) {
+          return false
+        }
         if (e.ctrlKey && e.key === 'i' && e.type === 'keydown') {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('sorcerer:dictation', { detail: sessionId }))
@@ -138,8 +142,10 @@ export function TerminalView({ sessionId, isFocused }: TerminalViewProps) {
         if (e.ctrlKey && e.key === 'b' && e.type === 'keydown') {
           return false
         }
-        // Let Alt+Arrow keys bubble up for session navigation
-        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.type === 'keydown') {
+        // Reserve only Ctrl+Alt+Up/Down for Sorcerer. Alt+Up/Down and
+        // Shift+Left/Right belong to terminal apps (including Codex questions).
+        if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey &&
+            (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.type === 'keydown') {
           return false
         }
         return true

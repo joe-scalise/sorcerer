@@ -1,4 +1,5 @@
 import type { SorcererAPI } from '../../../preload/index'
+import type { InboxCreateInput, InboxUpdateInput, InboxItem } from '../../../shared/inbox'
 
 /**
  * Multiplexed WebSocket for streaming channels (terminal I/O, file-watcher events).
@@ -276,6 +277,14 @@ export function createRemoteClient(baseUrl: string, token: string): SorcererAPI 
           callback(payload)
         })
       }
+    },
+
+    inbox: {
+      list: () => rpc('inbox:list') as Promise<InboxItem[]>,
+      create: (input: InboxCreateInput) => rpc('inbox:create', input) as Promise<InboxItem>,
+      update: (id: string, input: InboxUpdateInput) => rpc('inbox:update', id, input) as Promise<InboxItem>,
+      reorder: (id: string, targetId: string) => rpc('inbox:reorder', id, targetId) as Promise<InboxItem[]>,
+      delete: (id: string) => rpc('inbox:delete', id) as Promise<void>
     },
 
     quickNotes: {

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
+import { validateInboxInput, type InboxItem, type InboxCreateInput, type InboxUpdateInput } from '../../shared/inbox'
 
 export interface MobileDeviceRecord {
   id: string
@@ -129,6 +130,30 @@ export class DatabaseService {
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
         updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
       );
+    `)
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS inbox_items (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done', 'archived')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `)
+
+    try { this.db.run('ALTER TABLE inbox_items ADD COLUMN sort_order INTEGER') } catch { /* already migrated */ }
+
+    // sql.js export resets connection pragmas, so preserve captures even if
+    // foreign-key enforcement is currently disabled by a previous snapshot.
+    this.db.run(`
+      CREATE TRIGGER IF NOT EXISTS inbox_keep_on_project_delete
+      BEFORE DELETE ON projects BEGIN
+        UPDATE inbox_items SET project_id = NULL WHERE project_id = OLD.id;
+      END;
     `)
 
     // Add sort_order column to projects (idempotent migration)
@@ -946,6 +971,87 @@ export class DatabaseService {
 
     this.db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, valueToStore])
     this.save()
+  }
+
+  // Human-owned inbox; captures have no session relationship.
+  listInboxItems(): InboxItem[] {
+    if (!this.db) throw new Error('Database not initialized')
+    const statement = this.db.prepare('SELECT * FROM inbox_items ORDER BY pinned DESC, COALESCE(sort_order, -created_at) ASC, created_at DESC, id ASC')
+    const items: InboxItem[] = []
+    try {
+      while (statement.step()) {
+        const row = statement.getAsObject()
+        items.push({ ...row, pinned: row.pinned === 1 } as unknown as InboxItem)
+      }
+    } finally { statement.free() }
+    return items
+  }
+
+  createInboxItem(input: InboxCreateInput): InboxItem {
+    if (!this.db) throw new Error('Database not initialized')
+    const fields = validateInboxInput(input, false)
+    if (fields.project_id && !this.getProject(fields.project_id)) throw new Error('This project is no longer available. Choose another project or no project.')
+    const item: InboxItem = {
+      id: uuidv4(), title: fields.title!, body: fields.body ?? '', project_id: fields.project_id ?? null,
+      pinned: false, status: 'open', created_at: Date.now(), updated_at: Date.now(), sort_order: null
+    }
+    this.db.run('INSERT INTO inbox_items (id, title, body, project_id, pinned, status, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)',
+      [item.id, item.title, item.body, item.project_id, item.status, item.created_at, item.updated_at])
+    try { this.save() } catch (error) {
+      // Keep failed captures retryable without leaving an invisible duplicate in memory.
+      this.db.run('DELETE FROM inbox_items WHERE id = ?', [item.id])
+      throw error
+    }
+    return item
+  }
+
+  updateInboxItem(id: string, input: InboxUpdateInput): InboxItem {
+    if (!this.db) throw new Error('Database not initialized')
+    if (typeof id !== 'string') throw new Error('Invalid inbox item.')
+    const fields = validateInboxInput(input, true)
+    if (fields.project_id && !this.getProject(fields.project_id)) throw new Error('This project is no longer available. Choose another project or no project.')
+    const previous = this.listInboxItems().find((item) => item.id === id)
+    if (!previous) throw new Error('This inbox item is no longer available. Refresh the inbox.')
+    const item = { ...previous, ...fields, updated_at: Date.now() }
+    const write = (value: InboxItem) => this.db!.run(
+      'UPDATE inbox_items SET title = ?, body = ?, project_id = ?, pinned = ?, status = ?, updated_at = ? WHERE id = ?',
+      [value.title, value.body, value.project_id, Number(value.pinned), value.status, value.updated_at, id])
+    write(item)
+    try { this.save() } catch (error) { write(previous); throw error }
+    return item
+  }
+
+  reorderInboxItem(id: string, targetId: string): InboxItem[] {
+    if (!this.db) throw new Error('Database not initialized')
+    const all = this.listInboxItems()
+    const source = all.find((item) => item.id === id)
+    const target = all.find((item) => item.id === targetId)
+    if (!source || !target || source.status !== target.status || source.pinned !== target.pinned) throw new Error('Items must be in the same view and pin group.')
+    if (id === targetId) return all
+    const group = all.filter((item) => item.status === source.status && item.pinned === source.pinned)
+    const from = group.findIndex((item) => item.id === id)
+    const to = group.findIndex((item) => item.id === targetId)
+    const previous = group.map((item) => ({ id: item.id, sort_order: item.sort_order ?? null }))
+    group.splice(to, 0, group.splice(from, 1)[0])
+    for (const [index, item] of group.entries()) this.db.run('UPDATE inbox_items SET sort_order = ? WHERE id = ?', [index, item.id])
+    try { this.save() } catch (error) {
+      for (const item of previous) this.db.run('UPDATE inbox_items SET sort_order = ? WHERE id = ?', [item.sort_order, item.id])
+      throw error
+    }
+    return this.listInboxItems()
+  }
+
+  deleteInboxItem(id: string): void {
+    if (!this.db) throw new Error('Database not initialized')
+    if (typeof id !== 'string' || !id) throw new Error('Invalid inbox item.')
+    const item = this.listInboxItems().find((entry) => entry.id === id)
+    if (!item) throw new Error('This inbox item is no longer available. Refresh the inbox.')
+    this.db.run('DELETE FROM inbox_items WHERE id = ?', [id])
+    try { this.save() } catch (error) {
+      this.db.run('INSERT INTO inbox_items (id, title, body, project_id, pinned, status, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [item.id, item.title, item.body, item.project_id, Number(item.pinned), item.status, item.created_at, item.updated_at, item.sort_order ?? null])
+      throw error
+    }
   }
 
   // Quick Notes operations

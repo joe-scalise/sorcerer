@@ -2,6 +2,12 @@
 
 Sorcerer launches your installed CLI in a native terminal. Sign in using that CLI's documented authentication flow. Detection in **Settings → Providers** checks CLI availability, not account entitlement. Refresh providers after installing or updating a CLI.
 
+## Codex question controls
+
+Click inside the terminal to focus it, then use the question shortcuts shown by your Codex version. Sorcerer passes **Shift+Left/Right**, **Alt+Up/Down**, **Tab/Shift+Tab**, arrows, Enter and Escape through to the CLI in main and pop-out terminals. Questions and answers stay inside Codex's own interface.
+
+Sorcerer's session navigation uses **Ctrl+Alt+Up/Down**. Older Sorcerer versions intercepted Alt+Up/Down for session navigation, conflicting with Codex's question and queued-message controls. Shift+Left/Right are separate forward/backward actions in Codex; use the direction displayed by the prompt.
+
 ## GitHub Copilot CLI
 
 Install the standalone [`copilot` CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli), then run `copilot login` or use `/login` in Copilot. The retired `gh copilot` extension is not this provider. Keep Copilot current with its own updater/package manager.

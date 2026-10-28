@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { getApi } from './api/client'
 import { Sidebar } from './components/Sidebar'
+import { InboxPanel } from './components/InboxPanel'
 import { MainContent } from './components/MainContent'
 import { ContextMenu } from './components/ContextMenu'
 import { ToastContainer } from './components/Toast'
@@ -430,6 +431,7 @@ export function App() {
     <div className="app-shell">
       <Sidebar />
       {layoutRestored ? <MainContent /> : <main className="main-content"><div className="terminal-placeholder" role="status">Restoring workspace…</div></main>}
+      <InboxPanel />
       <ContextMenu />
       <ToastContainer />
       <NewSessionDialog />
