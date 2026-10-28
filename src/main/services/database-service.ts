@@ -32,6 +32,7 @@ export interface CreateMobileDeviceInput {
 
 export class DatabaseService {
   private db: SqlJsDatabase | null = null
+  private sql: Awaited<ReturnType<typeof initSqlJs>> | null = null
   private dbPath: string
   private ready: Promise<void>
 
@@ -51,6 +52,7 @@ export class DatabaseService {
     const SQL = await initSqlJs({
       locateFile: () => wasmPath
     })
+    this.sql = SQL
 
     if (fs.existsSync(this.dbPath)) {
       const buffer = fs.readFileSync(this.dbPath)
@@ -636,8 +638,21 @@ export class DatabaseService {
 
   removeSession(id: string): void {
     if (!this.db) return
-    this.db.run('DELETE FROM sessions WHERE id = ?', [id])
-    this.save()
+    // A failed persistence must not leave a deletion in the live snapshot:
+    // an unrelated later save could otherwise silently persist it.
+    const before = this.db.export()
+    this.db.run('PRAGMA foreign_keys = ON;')
+    try {
+      this.db.run('DELETE FROM sessions WHERE id = ?', [id])
+      this.save()
+    } catch (error) {
+      if (this.sql) {
+        try { this.db.close() } catch { /* an export failure may have closed it */ }
+        this.db = new this.sql.Database(before)
+        this.db.run('PRAGMA foreign_keys = ON;')
+      }
+      throw error
+    }
   }
 
   // Agent operations

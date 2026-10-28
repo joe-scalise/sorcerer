@@ -70,9 +70,9 @@ export function DeleteDialog() {
           Are you sure you want to delete <strong>{targetName}</strong>?
           {targetType === 'project'
             ? ' This will remove the project and all its sessions.'
-            : ' The git worktree and branch will be cleaned up.'}
+            : ' The git worktree will be removed, including ignored files. Branches are kept for recovery.'}
         </p>
-        <p className="dialog-confirm-subtext">Changes will be auto-committed and pushed before deletion.</p>
+        <p className="dialog-confirm-subtext">{targetType === 'session' ? 'Changes will be auto-committed and Sorcerer will attempt to push the branch.' : 'Changes will be auto-committed and pushed before deletion.'}</p>
         {error && <div className="dialog-error" role="alert">{error}</div>}
       </div>
       <DialogActions>

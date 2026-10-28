@@ -138,6 +138,9 @@ export const useSessionStore = create<SessionState>()(
       }))
     } catch (err) {
       console.error('[session-store] deleteSession failed:', err)
+      if (err instanceof Error && err.message.includes('The session was deleted, but workspace cleanup failed')) {
+        await get().loadSessions()
+      }
       throw err
     }
   },

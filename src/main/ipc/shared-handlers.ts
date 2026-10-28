@@ -27,6 +27,14 @@ export interface HandlerServices {
 let sqlJsPromise: Promise<any> | null = null
 let lastCodexStateFailureSignature: string | null = null
 
+function workspaceContainsRuntime(worktreePath: string): boolean {
+  const workspace = path.resolve(worktreePath)
+  return [process.cwd(), process.execPath, __dirname].some((candidate) => {
+    const relative = path.relative(workspace, path.resolve(candidate))
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+  })
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 /**
@@ -1842,11 +1850,15 @@ export async function deleteSession(
   { db, pty, worktree }: HandlerServices,
   sessionId: string
 ): Promise<void> {
-  if (pty.isRunning(sessionId)) {
-    pty.kill(sessionId)
-  }
-
   const session = db.getSession(sessionId)
+  if (!session) return
+  const project = db.getProject(session.project_id as string)
+  const isMainRepo = project && session.worktree_path === project.path
+  if (session.worktree_path && workspaceContainsRuntime(session.worktree_path as string) &&
+      ((!isMainRepo && session.type !== 'quick-terminal') || pty.isRunning(sessionId))) {
+    throw new Error('Sorcerer is running from this workspace. Start Sorcerer from another location before deleting the session.')
+  }
+  if (pty.isRunning(sessionId)) await pty.killSessionAndWait(sessionId)
 
   // Quick terminals: just kill PTY and remove DB record — no worktree/branch ops
   if (session && session.type === 'quick-terminal') {
@@ -1855,14 +1867,14 @@ export async function deleteSession(
   }
 
   if (session) {
-    const project = db.getProject(session.project_id as string)
-    const isMainRepo = project && session.worktree_path === project.path
-
     // Auto-commit dirty work before destruction — skip for main repo
     if (!isMainRepo && session.worktree_path && fs.existsSync(session.worktree_path as string)) {
       const commitResult = await worktree.autoCommit(session.worktree_path as string)
       if (commitResult.committed) {
         console.log('[session:delete] Auto-committed:', commitResult.message)
+      }
+      if (!(await simpleGit(session.worktree_path as string).status()).isClean()) {
+        throw new Error('Could not commit all changes. The session and workspace were kept; check Git status before deleting.')
       }
     }
 
@@ -1876,24 +1888,23 @@ export async function deleteSession(
       }
     }
 
-    // Remove worktree + local branch — skip for main repo
+    // Save the session deletion before touching the workspace. A database
+    // failure must never destroy the only workspace and leave a stale record.
+    try { db.removeSession(sessionId) } catch (err: any) {
+      throw new Error(`Could not save the session deletion. The workspace and branch were kept. Restart Sorcerer and try again. ${err?.message || ''}`)
+    }
+
+    // Preserve both branch references as a recovery path, including when a
+    // remote push failed or no remote exists.
     if (!isMainRepo && project && session.worktree_path && fs.existsSync(session.worktree_path as string)) {
       try {
-        await worktree.remove(project.path as string, session.worktree_path as string, session.branch as string)
-      } catch (err) {
-        console.log('[session:delete] Worktree cleanup failed (may already be removed):', err)
+        await worktree.remove(project.path as string, session.worktree_path as string)
+        if (fs.existsSync(session.worktree_path as string)) throw new Error('Workspace still exists')
+      } catch (err: any) {
+        throw new Error(`The session was deleted, but workspace cleanup failed. The branch was kept. ${err?.message || ''}`)
       }
     }
-
-    // Delete remote branch (fire-and-forget) — skip for main repo
-    if (!isMainRepo && project && session.branch) {
-      worktree.deleteRemoteBranch(project.path as string, session.branch as string).then((r) => {
-        if (r.deleted) console.log('[session:delete] Remote branch deleted')
-      })
-    }
   }
-
-  db.removeSession(sessionId)
 }
 
 export async function restartSession(
@@ -2258,12 +2269,7 @@ export async function landOnMain(
   if (!session.worktree_path || !fs.existsSync(session.worktree_path as string)) {
     return { landed: false, error: 'The session worktree is missing. Restore it before landing.' }
   }
-  const workspace = path.resolve(session.worktree_path as string)
-  const containsRuntimePath = (candidate: string) => {
-    const relative = path.relative(workspace, path.resolve(candidate))
-    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
-  }
-  if ([process.cwd(), process.execPath, __dirname].some(containsRuntimePath)) {
+  if (workspaceContainsRuntime(session.worktree_path as string)) {
     return { landed: false, error: 'Sorcerer is running from this workspace. Start Sorcerer from another location before landing this session.' }
   }
   const preflight = await worktree.checkLandPrerequisites(project.path as string)
