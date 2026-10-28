@@ -340,7 +340,8 @@ function RemoteTab() {
   const [token, setToken] = useState('')
   const [tokenVisible, setTokenVisible] = useState(false)
   const [toggling, setToggling] = useState(false)
-  const [copiedTarget, setCopiedTarget] = useState<'token' | 'url' | 'rc' | null>(null)
+  const [copiedTarget, setCopiedTarget] = useState<'token' | 'url' | 'rc' | 'deeplink' | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
 
   const flashCopied = (target: 'token' | 'url' | 'rc') => {
     setCopiedTarget(target)
@@ -412,6 +413,43 @@ function RemoteTab() {
   const accessUrl = `http://${host}:${port}?token=${token}`
   const rcHost = bindAddress === '0.0.0.0' ? lanIp : bindAddress
   const rcUrl = `http://${rcHost}:${port}/rc?token=${token}`
+  const androidDeepLink = (() => {
+    const params = new URLSearchParams({
+      scheme: 'http',
+      host: rcHost,
+      port,
+      token
+    })
+    return `sorcerer-remote://connect?${params.toString()}`
+  })()
+
+  useEffect(() => {
+    let cancelled = false
+    if (!running || !token || !rcHost || !port) {
+      setQrDataUrl('')
+      return
+    }
+
+    import('qrcode').then((QRCode) => {
+      return QRCode.toDataURL(androidDeepLink, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 220,
+        color: {
+          dark: '#EDE6D8',
+          light: '#0F0E0C'
+        }
+      })
+    }).then((url) => {
+      if (!cancelled) setQrDataUrl(url)
+    }).catch(() => {
+      if (!cancelled) setQrDataUrl('')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [androidDeepLink, port, rcHost, running, token])
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(accessUrl).then(() => {
@@ -471,6 +509,37 @@ function RemoteTab() {
             <span className="settings-remote-preview-hint">
               Lightweight mobile interface — check session status and send messages from your phone.
             </span>
+          </div>
+
+          <div className="settings-remote-preview" style={{ marginTop: 8 }}>
+            <div className="settings-remote-preview-header">
+              <SmartphoneIcon style={{ width: 14, height: 14, opacity: 0.6 }} />
+              <span>Android Pairing</span>
+            </div>
+            <div className="settings-remote-qr-block">
+              {qrDataUrl ? (
+                <img className="settings-remote-qr" src={qrDataUrl} alt="Scan to pair Sorcerer Remote on Android" />
+              ) : (
+                <div className="settings-remote-qr settings-remote-qr--placeholder">QR unavailable</div>
+              )}
+              <div className="settings-remote-qr-meta">
+                <div className="settings-remote-preview-url-row">
+                  <code className="settings-remote-preview-url">{`sorcerer-remote://connect?host=${rcHost}&port=${port}&token=${tokenVisible ? token : '\u2022'.repeat(8)}`}</code>
+                  <button className="settings-copy-inline-btn" type="button" onClick={() => {
+                    navigator.clipboard.writeText(androidDeepLink).then(() => {
+                      flashCopied('deeplink')
+                    }).catch((err: any) => {
+                      addToast(`Failed to copy Android link: ${err?.message || 'Clipboard error'}`, 'error')
+                    })
+                  }} title="Copy Android deep link">
+                    {copiedTarget === 'deeplink' ? 'Copied' : <CopyIcon style={{ width: 13, height: 13 }} />}
+                  </button>
+                </div>
+                <span className="settings-remote-preview-hint">
+                  Scan this with your phone camera after installing the Android app to open Sorcerer Remote with host, port, and token prefilled.
+                </span>
+              </div>
+            </div>
           </div>
         </>
       )}

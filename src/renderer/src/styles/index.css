@@ -4019,6 +4019,37 @@ button:focus-visible,
   line-height: 1.4;
 }
 
+.settings-remote-qr-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.settings-remote-qr {
+  width: 110px;
+  height: 110px;
+  border-radius: 8px;
+  border: 1px solid var(--border-medium);
+  background: #0f0e0c;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.settings-remote-qr--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.settings-remote-qr-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ── Profile tab ─────────────────────────────────────────────── */
 
 .profile-avatar-section {

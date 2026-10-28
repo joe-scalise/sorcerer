@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="sorcerer_bg">#0F0E0C</color>
+  <color name="sorcerer_surface">#1A1714</color>
+  <color name="sorcerer_text">#EDE6D8</color>
+  <color name="sorcerer_accent">#E2A445</color>
+  <color name="sorcerer_accent_dark">#C48A2A</color>
+  <color name="sorcerer_outline">#3A342A</color>
+</resources>

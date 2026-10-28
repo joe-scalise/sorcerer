@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <style name="Theme.Sorcerer" parent="Theme.Material3.Dark.NoActionBar">
+    <item name="colorPrimary">@color/sorcerer_accent</item>
+    <item name="colorPrimaryContainer">@color/sorcerer_accent_dark</item>
+    <item name="android:statusBarColor">@color/sorcerer_bg</item>
+    <item name="android:navigationBarColor">@color/sorcerer_bg</item>
+    <item name="colorSurface">@color/sorcerer_surface</item>
+    <item name="android:windowBackground">@color/sorcerer_bg</item>
+    <item name="android:textColorPrimary">@color/sorcerer_text</item>
+    <item name="colorOutline">@color/sorcerer_outline</item>
+    <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
+    <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+  </style>
+</resources>

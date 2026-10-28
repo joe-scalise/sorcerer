@@ -62,6 +62,7 @@
     "electron-vite": "^5.0.0",
     "marked": "^17.0.5",
     "node-pty": "^1.1.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "simple-git": "^3.30.0",

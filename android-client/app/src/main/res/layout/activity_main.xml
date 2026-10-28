@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@color/sorcerer_bg"
+  android:orientation="vertical">
+
+  <com.google.android.material.appbar.MaterialToolbar
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/sorcerer_surface"
+    android:minHeight="?attr/actionBarSize"
+    app:title="@string/app_name"
+    app:titleTextColor="@color/sorcerer_text" />
+
+  <FrameLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <WebView
+      android:id="@+id/webView"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent" />
+
+    <LinearLayout
+      android:id="@+id/loadingOverlay"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      android:background="#B30F0E0C"
+      android:gravity="center"
+      android:orientation="vertical"
+      android:padding="24dp">
+
+      <ProgressBar
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:indeterminate="true" />
+
+      <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/loading_text"
+        android:textColor="@color/sorcerer_text" />
+    </LinearLayout>
+
+  </FrameLayout>
+</LinearLayout>

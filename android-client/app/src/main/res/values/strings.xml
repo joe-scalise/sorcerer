@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Sorcerer Remote</string>
+  <string name="title_settings">Connection Settings</string>
+  <string name="menu_settings">Settings</string>
+  <string name="menu_reload">Reload</string>
+  <string name="menu_open_in_browser">Open in browser</string>
+  <string name="settings_description">Point this app at a Sorcerer desktop instance with Remote Access enabled, then it will load the existing mobile remote control surface.</string>
+  <string name="label_scheme">Scheme</string>
+  <string name="label_host">Host or IP</string>
+  <string name="label_port">Port</string>
+  <string name="label_token">Auth token</string>
+  <string name="hint_host">192.168.1.10</string>
+  <string name="hint_port">7437</string>
+  <string name="hint_token">Paste token from Sorcerer Settings</string>
+  <string name="action_save">Save</string>
+  <string name="action_cancel">Cancel</string>
+  <string name="error_missing_config">Add a host, port, and token before opening Sorcerer Remote.</string>
+  <string name="error_invalid_port">Enter a valid TCP port.</string>
+  <string name="error_no_browser">No browser available.</string>
+  <string name="message_qr_imported">Connection imported from QR code.</string>
+  <string name="error_invalid_deeplink">Invalid Sorcerer pairing link.</string>
+  <string name="loading_text">Connecting to Sorcerer remote control…</string>
+</resources>
