@@ -62,6 +62,14 @@ describe('atomic database persistence', () => {
     expect(db.getSetting('persistence-test')).toBe('updated')
   })
 
+  it('keeps foreign keys enabled after snapshots so project deletion cascades', () => {
+    db.addProject('p', 'Project', '/test-project')
+    db.addSession({ id: 's', project_id: 'p', name: 'Session', branch: 'branch', worktree_path: '/test-worktree' })
+    db.setSetting('another-save', 'value')
+    db.removeProject('p')
+    expect(db.getSession('s')).toBeUndefined()
+  })
+
   it('leaves the saved database untouched if exporting fails', async () => {
     const internal = db as unknown as { db: { export: () => Uint8Array } }
     vi.spyOn(internal.db, 'export').mockImplementationOnce(() => { throw new Error('export failed') })

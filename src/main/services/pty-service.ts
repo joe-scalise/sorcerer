@@ -233,6 +233,11 @@ export class PTYService {
     return session ? this.waitForExit(session, timeoutMs, false) : Promise.resolve()
   }
 
+  async killSessionAndWait(sessionId: string, timeoutMs = 10_000): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    if (session) await this.waitForExit(session, timeoutMs, true)
+  }
+
   private waitForExit(session: PTYSession, timeoutMs: number, strict: boolean): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false
@@ -244,7 +249,7 @@ export class PTYService {
         else resolve()
       }
       const timer = setTimeout(() => finish(strict
-        ? new Error(`Terminal ${session.sessionId} did not stop within ${timeoutMs} ms. The update was not installed. Try again after it exits.`)
+        ? new Error(`Terminal ${session.sessionId} did not stop within ${timeoutMs} ms. Try again after it exits.`)
         : undefined), timeoutMs)
       // This resolves only after every exit consumer has been invoked, including
       // the main process listeners that enqueue session state persistence.

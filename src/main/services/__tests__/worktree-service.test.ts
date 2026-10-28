@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mockedHome = vi.hoisted(() => ({ path: '' }))
 vi.mock('os', () => ({ default: { homedir: () => mockedHome.path } }))
 import { WorktreeService } from '../worktree-service'
+import { landOnMain, type HandlerServices } from '../../ipc/shared-handlers'
 
 const tempRoot = path.resolve(process.env.TEMP || process.env.TMP || process.cwd())
 let project: string
@@ -89,8 +90,89 @@ describe('worktree data preservation', { timeout: 30_000 }, () => {
 
   it('lands successfully into a clean main checkout', async () => {
     const { branch } = await createChangedBranch()
-    expect(await service.squashMergeToMain(project, branch, 'feature')).toEqual({ merged: true })
+    expect(await service.squashMergeToMain(project, branch, 'feature')).toMatchObject({ merged: true, warning: expect.stringContaining('no origin') })
     expect(fs.readFileSync(path.join(project, 'file.txt'), 'utf8')).toBe('feature\n')
     expect((await simpleGit(project).status()).isClean()).toBe(true)
+  })
+
+  it('starts new worktrees from main even when a feature branch is checked out', async () => {
+    const git = simpleGit(project)
+    const main = await git.revparse(['main'])
+    await git.checkoutLocalBranch('unrelated')
+    fs.writeFileSync(path.join(project, 'other.txt'), 'unrelated')
+    await git.add('.')
+    await git.commit('Other work')
+    const created = await service.create(project, 'fresh')
+    expect(await git.revparse([created.branch])).toBe(main)
+    expect((await git.status()).current).toBe('unrelated')
+  })
+
+  it('preserves the running session when preflight fails', async () => {
+    const created = await createChangedBranch()
+    await simpleGit(project).checkoutLocalBranch('unrelated')
+    const pty = { isRunning: vi.fn(() => true), killSessionAndWait: vi.fn() }
+    const db = { getSession: () => ({ project_id: 'p', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), updateSession: vi.fn() }
+    const result = await landOnMain({ db, pty, worktree: service } as unknown as HandlerServices, 's')
+    expect(result.error).toContain('Check out main')
+    expect(pty.killSessionAndWait).not.toHaveBeenCalled()
+    expect(db.updateSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses to stop a session when Sorcerer runs inside its worktree', async () => {
+    const created = await createChangedBranch()
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(created.worktreePath)
+    const pty = { isRunning: vi.fn(() => true), killSessionAndWait: vi.fn() }
+    const db = { getSession: () => ({ project_id: 'p', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }) }
+    try {
+      const result = await landOnMain({ db, pty, worktree: service } as unknown as HandlerServices, 's')
+      expect(result.error).toContain('running from this workspace')
+      expect(pty.killSessionAndWait).not.toHaveBeenCalled()
+    } finally { cwd.mockRestore() }
+  })
+
+  it('lands while retaining the session, worktree, branch and ignored files', async () => {
+    const created = await createChangedBranch()
+    fs.writeFileSync(path.join(created.worktreePath, '.gitignore'), 'ignored.txt\n')
+    await simpleGit(created.worktreePath).add('.gitignore')
+    await simpleGit(created.worktreePath).commit('Ignore local data')
+    fs.writeFileSync(path.join(created.worktreePath, 'ignored.txt'), 'local data')
+    const pty = { isRunning: vi.fn(() => true), killSessionAndWait: vi.fn().mockResolvedValue(undefined) }
+    const db = { getSession: () => ({ project_id: 'p', name: 'feature', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), updateSession: vi.fn(), removeSession: vi.fn() }
+    const result = await landOnMain({ db, pty, worktree: service } as unknown as HandlerServices, 's')
+    expect(result).toMatchObject({ landed: true, warning: expect.stringContaining('no origin') })
+    expect(pty.killSessionAndWait).toHaveBeenCalledOnce()
+    expect(db.removeSession).not.toHaveBeenCalled()
+    expect(fs.readFileSync(path.join(created.worktreePath, 'ignored.txt'), 'utf8')).toBe('local data')
+    expect(await simpleGit(project).revparse([created.branch])).toBeTruthy()
+    expect(fs.readFileSync(path.join(project, 'file.txt'), 'utf8')).toBe('feature\n')
+  })
+
+  it('does not merge or remove work if automatic commit fails', async () => {
+    const created = await createChangedBranch()
+    fs.writeFileSync(path.join(created.worktreePath, 'uncommitted.txt'), 'unsaved work')
+    await simpleGit(created.worktreePath).addConfig('user.name', '')
+    await simpleGit(created.worktreePath).addConfig('user.email', '')
+    const db = { getSession: () => ({ project_id: 'p', name: 'feature', worktree_path: created.worktreePath, branch: created.branch }), getProject: () => ({ path: project }), updateSession: vi.fn(), removeSession: vi.fn() }
+    const pty = { isRunning: () => false, kill: vi.fn() }
+    const before = await simpleGit(project).revparse(['HEAD'])
+    const result = await landOnMain({ db, pty, worktree: service } as unknown as HandlerServices, 's')
+    expect(result.error).toContain('Could not commit')
+    expect(await simpleGit(project).revparse(['HEAD'])).toBe(before)
+    expect(fs.readFileSync(path.join(created.worktreePath, 'uncommitted.txt'), 'utf8')).toBe('unsaved work')
+    expect(db.removeSession).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed push as a completed local merge', async () => {
+    const remote = path.join(mockedHome.path, 'remote.git')
+    await simpleGit(mockedHome.path).raw(['init', '--bare', remote])
+    const git = simpleGit(project)
+    await git.addRemote('origin', remote)
+    await git.push('origin', 'main')
+    await git.raw(['remote', 'set-url', '--push', 'origin', path.join(mockedHome.path, 'missing.git')])
+    const { branch } = await createChangedBranch()
+    const result = await service.squashMergeToMain(project, branch, 'feature')
+    expect(result).toMatchObject({ merged: true, warning: expect.stringContaining('push failed') })
+    expect(fs.readFileSync(path.join(project, 'file.txt'), 'utf8')).toBe('feature\n')
+    expect(await git.revparse(['main'])).not.toBe(await git.revparse(['origin/main']))
   })
 })

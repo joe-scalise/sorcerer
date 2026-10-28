@@ -23,7 +23,7 @@ interface SessionState {
   restartSession: (sessionId: string) => Promise<void>
   resumeSession: (sessionId: string) => Promise<void>
   restoreSession: (sessionId: string) => Promise<void>
-  landOnMain: (sessionId: string) => Promise<void>
+  landOnMain: (sessionId: string) => Promise<{ warning?: string }>
   pushBranch: (sessionId: string) => Promise<{ pushed: boolean; error?: string }>
   setActiveSession: (id: string) => void
   renameSession: (sessionId: string, name: string) => Promise<void>
@@ -214,20 +214,11 @@ export const useSessionStore = create<SessionState>()(
 
   landOnMain: async (sessionId) => {
     const result = await getApi().session.landOnMain(sessionId)
+    await get().loadSessions()
     if (!result.landed) {
       throw new Error(result.error || 'Landing failed')
     }
-
-    // Clear from split panels
-    const { splitRoot } = useUIStore.getState()
-    if (splitRoot) {
-      useUIStore.setState({ splitRoot: clearSessionFromTree(splitRoot, sessionId) })
-    }
-
-    set((state) => ({
-      sessions: state.sessions.filter((s) => s.id !== sessionId),
-      activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId
-    }))
+    return { warning: result.warning }
   },
 
   pushBranch: async (sessionId) => {

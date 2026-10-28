@@ -120,6 +120,17 @@ describe('creation and landing workflows', () => {
     expect(mocks.landOnMain).not.toHaveBeenCalled()
   })
 
+  it('shows a partial push result without offering a retry of the merge', async () => {
+    mocks.ui.activeDialog = 'land-session'
+    mocks.divergence.mockResolvedValueOnce({ behind: 0, ahead: 1 })
+    mocks.landOnMain.mockResolvedValueOnce({ warning: 'Landed locally, but the push failed.' })
+    await act(async () => root.render(<LandDialog />))
+    await act(async () => Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Land')!.click())
+    expect(host.textContent).toContain('Landed locally, but the push failed')
+    expect(host.textContent).toContain('session and workspace were kept')
+    expect(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === 'Retry')).toBe(false)
+  })
+
   it('keeps project browsing open while the operation is in progress', async () => {
     mocks.ui.activeDialog = 'add-project'
     const pending = deferred<null>()

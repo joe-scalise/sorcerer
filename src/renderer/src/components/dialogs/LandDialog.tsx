@@ -61,6 +61,7 @@ export function LandDialog() {
   const { sessions, landOnMain } = useSessionStore()
   const [landing, setLanding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [landed, setLanded] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthCheck>({ behind: 0, ahead: 0, loading: true })
 
   const open = activeDialog === 'land-session'
@@ -74,6 +75,7 @@ export function LandDialog() {
     let cancelled = false
     setHealth({ behind: 0, ahead: 0, loading: true })
     setError(null)
+    setLanded(null)
     getApi().session.divergence(dialogTargetId).then((d) => {
       if (cancelled) return
       setHealth({
@@ -93,8 +95,8 @@ export function LandDialog() {
     setLanding(true)
     setError(null)
     try {
-      await landOnMain(session.id)
-      closeDialog()
+      const result = await landOnMain(session.id)
+      setLanded(result?.warning || 'Changes landed on main. The session and workspace were kept.')
     } catch (err: any) {
       console.error('[LandDialog] land-on-main failed:', err)
       setError(err?.message || 'Failed to land on main')
@@ -127,6 +129,8 @@ export function LandDialog() {
             <span className="btn-spinner" />
             Landing <strong>{sessionName}</strong> onto main...
           </div>
+        ) : landed ? (
+          <div role="status"><strong>Landed on main</strong><p>{landed}</p><p>The session and workspace were kept. Do not land the same changes again.</p></div>
         ) : (
           <>
             <p className="dialog-confirm-text">
@@ -137,8 +141,7 @@ export function LandDialog() {
               <li>Auto-commit any uncommitted changes</li>
               {!health.loading && health.behind > 0 && <li>Rebase onto latest main</li>}
               <li>Squash-merge all commits into one on main</li>
-              <li>Remove worktree, local branch, and remote branch</li>
-              <li>Delete session</li>
+              <li>Keep the session, worktree, and branches for review</li>
             </ul>
           </>
         )}
@@ -151,11 +154,11 @@ export function LandDialog() {
       </div>
       <DialogActions>
         <DialogButton onClick={handleClose} disabled={landing}>
-          {error ? 'Close' : 'Cancel'}
+          {error || landed ? 'Close' : 'Cancel'}
         </DialogButton>
-        <DialogButton variant="primary" onClick={handleConfirm} disabled={!session || landing || health.loading || health.error}>
+        {!landed && <DialogButton variant="primary" onClick={handleConfirm} disabled={!session || landing || health.loading || health.error}>
           {landing ? 'Landing...' : error ? 'Retry' : 'Land'}
-        </DialogButton>
+        </DialogButton>}
       </DialogActions>
     </Dialog>
   )

@@ -121,9 +121,18 @@ export class WorktreeService {
       await git.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
     }
 
+    // New sessions start from the repository's default branch, independent of
+    // whichever feature branch happens to be checked out in the project folder.
+    let baseBranch = 'main'
+    try { await git.raw(['rev-parse', '--verify', 'main']) } catch {
+      try { await git.raw(['rev-parse', '--verify', 'master']); baseBranch = 'master' } catch {
+        throw new Error('Cannot create a session: no main or master branch exists.')
+      }
+    }
+
     // Create worktree with a new branch
     try {
-      await git.raw(['worktree', 'add', '-b', branch, worktreePath])
+      await git.raw(['worktree', 'add', '-b', branch, worktreePath, baseBranch])
     } catch (err: any) {
       if (!err.message?.includes('already exists')) throw err
 
@@ -402,7 +411,23 @@ export class WorktreeService {
     }
   }
 
-  async squashMergeToMain(projectPath: string, branch: string, sessionName: string): Promise<{ merged: boolean; error?: string }> {
+  async checkLandPrerequisites(projectPath: string): Promise<{ error?: string }> {
+    try {
+      const git = simpleGit(projectPath)
+      let defaultBranch = 'main'
+      try { await git.raw(['rev-parse', '--verify', 'main']) } catch {
+        try { await git.raw(['rev-parse', '--verify', 'master']); defaultBranch = 'master' } catch {
+          return { error: 'No main or master branch found' }
+        }
+      }
+      const status = await git.status()
+      if (status.current !== defaultBranch) return { error: `Check out ${defaultBranch} in the project repository before landing. The current checkout has been left unchanged.` }
+      if (!status.isClean()) return { error: `Commit or stash changes in the project repository before landing onto ${defaultBranch}, including untracked files.` }
+      return {}
+    } catch (err: any) { return { error: err?.message || 'Could not check the project repository' } }
+  }
+
+  async squashMergeToMain(projectPath: string, branch: string, sessionName: string): Promise<{ merged: boolean; error?: string; warning?: string }> {
     const git: SimpleGit = simpleGit(projectPath)
     let squashStarted = false
 
@@ -429,11 +454,14 @@ export class WorktreeService {
       }
 
       // Pull latest from remote so local main is up to date
-      try {
-        await git.raw(['fetch', 'origin', defaultBranch])
-        await git.raw(['merge', '--ff-only', `origin/${defaultBranch}`])
-      } catch {
-        // No remote, or local main has diverged — still safe to proceed with local merge
+      const remotes = await git.getRemotes()
+      if (remotes.some((remote) => remote.name === 'origin')) {
+        try {
+          await git.raw(['fetch', 'origin', defaultBranch])
+          await git.raw(['merge', '--ff-only', `origin/${defaultBranch}`])
+        } catch (err: any) {
+          return { merged: false, error: `Could not update ${defaultBranch} from origin: ${err?.message || 'unknown error'}` }
+        }
       }
 
       // Check there are actually commits to land
@@ -471,12 +499,15 @@ export class WorktreeService {
         return { merged: false, error: 'Commit failed after squash merge: ' + (err?.message || 'unknown error') }
       }
 
-      // Push main back to remote
+      // Report remote failures separately: the local commit already exists.
       try {
+        const remotes = await git.getRemotes()
+        if (!remotes.some((remote) => remote.name === 'origin')) {
+          return { merged: true, warning: `Landed locally on ${defaultBranch}; no origin remote is configured.` }
+        }
         await git.raw(['push', 'origin', defaultBranch])
-      } catch {
-        // Push failed — landed locally but not synced to remote
-        console.log('[squashMergeToMain] Push to remote failed — landed locally only')
+      } catch (err: any) {
+        return { merged: true, warning: `Landed locally on ${defaultBranch}, but the push failed: ${err?.message || 'unknown error'}. Push ${defaultBranch} manually.` }
       }
 
       return { merged: true }

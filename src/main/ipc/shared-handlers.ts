@@ -2244,7 +2244,7 @@ export async function getSessionGitStatus(
 export async function landOnMain(
   { db, pty, worktree }: HandlerServices,
   sessionId: string
-): Promise<{ landed: boolean; error?: string }> {
+): Promise<{ landed: boolean; error?: string; warning?: string }> {
   const session = db.getSession(sessionId)
   if (!session) throw new Error('Session not found')
   const project = db.getProject(session.project_id as string)
@@ -2255,16 +2255,36 @@ export async function landOnMain(
     return { landed: false, error: 'Cannot land a main repository session — it is already working in the main repo.' }
   }
 
-  // Kill running process — needed so worktree files aren't locked
-  if (pty.isRunning(sessionId)) {
-    pty.kill(sessionId)
+  if (!session.worktree_path || !fs.existsSync(session.worktree_path as string)) {
+    return { landed: false, error: 'The session worktree is missing. Restore it before landing.' }
   }
+  const workspace = path.resolve(session.worktree_path as string)
+  const containsRuntimePath = (candidate: string) => {
+    const relative = path.relative(workspace, path.resolve(candidate))
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+  }
+  if ([process.cwd(), process.execPath, __dirname].some(containsRuntimePath)) {
+    return { landed: false, error: 'Sorcerer is running from this workspace. Start Sorcerer from another location before landing this session.' }
+  }
+  const preflight = await worktree.checkLandPrerequisites(project.path as string)
+  if (preflight.error) return { landed: false, error: preflight.error }
+
+  // Stop the process before capturing files; leave the workspace and session intact.
+  if (pty.isRunning(sessionId)) {
+    try { await pty.killSessionAndWait(sessionId) } catch (err: any) {
+      return { landed: false, error: `Could not stop the session: ${err?.message || 'unknown error'}` }
+    }
+  }
+  db.updateSession(sessionId, { status: 'idle', pid: null })
 
   // Auto-commit dirty work in the worktree
   if (session.worktree_path && fs.existsSync(session.worktree_path as string)) {
     const commitResult = await worktree.autoCommit(session.worktree_path as string)
     if (commitResult.committed) {
       console.log('[session:land-on-main] Auto-committed:', commitResult.message)
+    }
+    if (!(await simpleGit(session.worktree_path as string).status()).isClean()) {
+      return { landed: false, error: 'Could not commit all session changes. The session and worktree were kept; check Git status and commit them before retrying.' }
     }
   }
 
@@ -2295,40 +2315,9 @@ export async function landOnMain(
     return { landed: false, error: mergeResult.error }
   }
 
-  // Kill running process only after successful merge — keeps terminal alive on failure
-  if (pty.isRunning(sessionId)) {
-    pty.kill(sessionId)
-  }
-
-  // Remove worktree + local branch
-  if (session.worktree_path && fs.existsSync(session.worktree_path as string)) {
-    try {
-      await worktree.remove(project.path as string, session.worktree_path as string, session.branch as string)
-    } catch (err) {
-      console.log('[session:land-on-main] Worktree cleanup failed:', err)
-    }
-  }
-
-  // Delete remote branch (fire-and-forget)
-  if (session.branch) {
-    worktree.deleteRemoteBranch(project.path as string, session.branch as string).then((r) => {
-      if (r.deleted) console.log('[session:land-on-main] Remote branch deleted')
-    })
-  }
-
-  // Remove session from DB
-  db.removeSession(sessionId)
-
-  // Sync other active worktrees onto updated main (fire-and-forget)
-  const otherSessions = db.listSessions(session.project_id as string)
-    .filter((s: any) => s.id !== sessionId && s.worktree_path && s.branch)
-  if (otherSessions.length > 0) {
-    worktree.syncActiveWorktrees(project.path as string, session.branch as string, otherSessions)
-      .then(() => console.log('[session:land-on-main] Synced other worktrees'))
-      .catch((err: any) => console.log('[session:land-on-main] Worktree sync error:', err))
-  }
-
-  return { landed: true }
+  // Keep the session and workspace, including ignored files and possibly the
+  // running app itself. Cleanup can be performed explicitly after inspection.
+  return { landed: true, warning: mergeResult.warning }
 }
 
 export function restoreSession(

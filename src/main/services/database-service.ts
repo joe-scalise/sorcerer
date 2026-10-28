@@ -373,7 +373,14 @@ export class DatabaseService {
     // complete snapshot has been flushed. A failed save must not truncate the
     // last readable database. Keeping the temporary file beside it ensures the
     // rename stays on one filesystem.
-    const data = Buffer.from(this.db.export())
+    // sql.js closes and reopens its connection during export, resetting PRAGMAs.
+    // Restore foreign-key enforcement before any subsequent writes.
+    let data: Buffer
+    try {
+      data = Buffer.from(this.db.export())
+    } finally {
+      this.db.run('PRAGMA foreign_keys = ON;')
+    }
     const temporaryPath = `${this.dbPath}.${uuidv4()}.tmp`
     let descriptor: number | undefined
     let created = false
