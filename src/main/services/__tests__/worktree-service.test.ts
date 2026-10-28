@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import simpleGit from 'simple-git'
+import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockedHome = vi.hoisted(() => ({ path: '' }))

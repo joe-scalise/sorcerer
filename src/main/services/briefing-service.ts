@@ -6,7 +6,7 @@ import { getFeatureFlags } from './features'
 
 import path from 'path'
 import fs from 'fs'
-import simpleGit from 'simple-git'
+import { simpleGit } from 'simple-git'
 import { DatabaseService } from './database-service'
 import { PTYService } from './pty-service'
 import { generateCompletion, type AIMessage } from './ai-provider-service'
