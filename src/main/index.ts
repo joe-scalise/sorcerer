@@ -40,6 +40,21 @@ if (process.platform !== 'win32') {
   } catch { /* keep existing PATH */ }
 }
 
+// All builds share ~/.sorcerer/sorcerer.db. Acquire Electron's process lock
+// against that data root before opening it, regardless of the UI profile.
+// An older Sorcerer version cannot participate in this lock; users must close
+// it before starting the updated app.
+const uiDataPath = app.getPath('userData')
+const instanceLockPath = path.join(os.homedir(), '.sorcerer', 'instance-lock')
+fs.mkdirSync(instanceLockPath, { recursive: true })
+app.setPath('userData', instanceLockPath)
+const ownsDatabaseLock = app.requestSingleInstanceLock()
+app.setPath('userData', uiDataPath)
+if (!ownsDatabaseLock) {
+  console.error('[startup] Another Sorcerer instance is using the shared database. Close it before starting another instance.')
+  app.quit()
+}
+
 // ── Dev mode isolation ───────────────────────────────────────
 // Use a separate user data directory in dev so the dev instance doesn't
 // collide with an installed Sorcerer (GPU cache locks, port conflicts, etc.)
@@ -702,7 +717,7 @@ async function createWindow(): Promise<void> {
   })
 }
 
-app.whenReady().then(() => {
+if (ownsDatabaseLock) app.whenReady().then(() => {
   void createWindow().catch((err) => {
     console.error('[startup] Window creation failed:', err)
     if (process.platform !== 'darwin') {
@@ -718,6 +733,13 @@ app.whenReady().then(() => {
       })
     }
   })
+})
+
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
 })
 
 app.on('before-quit', () => {
