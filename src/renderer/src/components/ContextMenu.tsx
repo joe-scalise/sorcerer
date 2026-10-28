@@ -8,11 +8,12 @@ import { useSessionStore } from '../stores/useSessionStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import { useToastStore } from '../stores/useToastStore'
 import {
-  PlusIcon, CopyIcon, TrashIcon, SplitHorizontalIcon, SplitVerticalIcon,
+  PlusIcon, CopyIcon, TrashIcon, SplitHorizontalIcon, SplitVerticalIcon, ExpandHorizontalIcon, ExpandVerticalIcon,
   RefreshIcon, UploadIcon, ExternalLinkIcon, ArchiveIcon, RotateCcwIcon, EditIcon, PlayIcon, StopIcon, TerminalIcon, MergeIcon, NotesIcon, SmartphoneIcon, FolderIcon, SettingsIcon, MaximizeIcon
 } from './icons'
 import { useQuickNotesStore } from '../stores/useQuickNotesStore'
 import type { SessionDiagnostics, SessionResumeHealth } from '../types'
+import { canExpandPanel } from '../utils/expandPanelLayout'
 
 type MenuItem =
   | { label: string; icon?: ReactNode; shortcut?: string; action: () => void; danger?: boolean; eager?: boolean; disabled?: boolean }
@@ -228,6 +229,17 @@ export function ContextMenu() {
     useSessionStore.setState({ activeSessionId: notePanelId })
   }
 
+  const { splitRoot: expansionRoot, expandPanel } = useUIStore.getState()
+  const expansionPanel = expansionRoot ? findLeafBySession(expansionRoot, contextMenu.targetId) : null
+  const panelExpansionItems: MenuItem[] = expansionPanel ? [
+    { label: 'Expand horizontally', icon: <ExpandHorizontalIcon className={iconClass} />,
+      disabled: !canExpandPanel(expansionRoot, expansionPanel.id, 'horizontal'),
+      action: () => expandPanel(expansionPanel.id, 'horizontal') },
+    { label: 'Expand vertically', icon: <ExpandVerticalIcon className={iconClass} />,
+      disabled: !canExpandPanel(expansionRoot, expansionPanel.id, 'vertical'),
+      action: () => expandPanel(expansionPanel.id, 'vertical') }
+  ] : []
+
   let items: MenuItem[]
 
   if (contextMenu.type === 'agent') {
@@ -260,6 +272,7 @@ export function ContextMenu() {
       { type: 'separator' as const },
       { label: 'Split Right', icon: <SplitHorizontalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitRight(contextMenu.targetId) } },
       { label: 'Split Down', icon: <SplitVerticalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitDown(contextMenu.targetId) } },
+      ...panelExpansionItems,
       { label: 'Focus Mode', icon: <MaximizeIcon className={iconClass} />, action: () => enterFocusMode(contextMenu.targetId) },
       { label: 'Pop Out', icon: <ExternalLinkIcon className={iconClass} />, action: async () => {
         await getApi().popout.open('terminal', contextMenu.targetId, targetAgent?.name || 'Agent')
@@ -413,6 +426,7 @@ export function ContextMenu() {
     items = [
       { label: 'Split Right', icon: <SplitHorizontalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitRight(contextMenu.targetId) } },
       { label: 'Split Down', icon: <SplitVerticalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitDown(contextMenu.targetId) } },
+      ...panelExpansionItems,
       { label: 'Focus Mode', icon: <MaximizeIcon className={iconClass} />, action: () => enterFocusMode(contextMenu.targetId) },
       { type: 'separator' as const },
       { label: 'Delete Notes', icon: <TrashIcon className={iconClass} />, danger: true, action: async () => {
@@ -446,6 +460,7 @@ export function ContextMenu() {
     items = [
       { label: 'Split Right', icon: <SplitHorizontalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitRight(contextMenu.targetId) } },
       { label: 'Split Down', icon: <SplitVerticalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitDown(contextMenu.targetId) } },
+      ...panelExpansionItems,
       { label: 'Focus Mode', icon: <MaximizeIcon className={iconClass} />, action: () => enterFocusMode(contextMenu.targetId) },
       ...(targetSession?.parent_session_id ? [
         { label: 'Open Quick Notes', icon: <NotesIcon className={iconClass} />, action: () => {
@@ -499,6 +514,7 @@ export function ContextMenu() {
     items = [
       { label: 'Split Right', icon: <SplitHorizontalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitRight(contextMenu.targetId) } },
       { label: 'Split Down', icon: <SplitVerticalIcon className={iconClass} />, action: () => { focusTargetPanel(contextMenu.targetId); splitDown(contextMenu.targetId) } },
+      ...panelExpansionItems,
       { label: 'Focus Mode', icon: <MaximizeIcon className={iconClass} />, action: () => enterFocusMode(contextMenu.targetId) },
       { label: 'Pop Out', icon: <ExternalLinkIcon className={iconClass} />, action: async () => {
         await getApi().popout.open('terminal', contextMenu.targetId, targetSession?.name || 'Session')

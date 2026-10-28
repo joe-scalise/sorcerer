@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useSessionStore } from './useSessionStore'
 import type { SplitNode, SplitLeaf, SplitBranch } from '../types'
+import { expandPanelLayout, type PanelExpansionDirection } from '../utils/expandPanelLayout'
 
 type DialogType =
   | 'new-session'
@@ -88,6 +89,7 @@ interface UIState {
   spotlightMode: boolean
   splitRight: (sessionId: string) => void
   splitDown: (sessionId: string) => void
+  expandPanel: (panelId: string, direction: PanelExpansionDirection) => void
   closePanel: (panelId: string) => void
   closeSplit: () => void
   setSplitRatio: (nodeId: string, ratio: number) => void
@@ -509,6 +511,14 @@ export const useUIStore = create<UIState>()(
             focusedPanelId: newSessionId === null ? newLeafId : focusedId
           })
         }
+      },
+
+      expandPanel: (panelId, direction) => {
+        const state = get()
+        if (!state.splitRoot) return
+        const expanded = expandPanelLayout(state.splitRoot, panelId, direction)
+        if (expanded === state.splitRoot) return
+        set({ splitRoot: expanded, focusedPanelId: panelId, maximizedPanelId: null })
       },
 
       closePanel: (panelId) => {

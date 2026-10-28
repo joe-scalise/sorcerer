@@ -24,7 +24,7 @@ Requires a supported AI CLI tool installed, such as [Claude Code](https://docs.a
 
 - **Multi-session management** — Run multiple AI agent sessions side-by-side with persistent terminals
 - **Project & worktree isolation** — Automatically create git worktrees so each session works in its own branch
-- **Split view** — View and interact with multiple sessions simultaneously
+- **Split view** — View and interact with multiple sessions simultaneously. Use a panel's menu → **Expand horizontally** or **Expand vertically** to extend it across a neighboring split while keeping the other panels visible. Available directions depend on the surrounding layout.
 - **Team awareness** — Monitor provider-specific integrations such as Claude Code teams and tasks
 - **Projects-first workspace** — Organize coding sessions and terminals around your projects
 - **Session recovery** — Resume previous sessions, detect orphaned worktrees, recover from crashes

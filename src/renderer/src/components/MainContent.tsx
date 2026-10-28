@@ -6,7 +6,8 @@ import { useProjectStore } from '../stores/useProjectStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import { useUIStore, findLeaf, findLeafBySession } from '../stores/useUIStore'
 import { OrphanWorkspaceBanner } from './OrphanWorkspaceBanner'
-import { GitBranchIcon, TerminalIcon, BotIcon, NotesIcon, SplitHorizontalIcon, SplitVerticalIcon, MaximizeIcon, MinimizeIcon, EyeIcon } from './icons'
+import { GitBranchIcon, TerminalIcon, BotIcon, NotesIcon, SplitHorizontalIcon, SplitVerticalIcon, ExpandHorizontalIcon, ExpandVerticalIcon, MaximizeIcon, MinimizeIcon, EyeIcon } from './icons'
+import { canExpandPanel } from '../utils/expandPanelLayout'
 import { TerminalView } from './TerminalView'
 import { QuickNotesPanel, parseQuickNotesPanelId } from './QuickNotesPanel'
 import { useQuickNotesStore } from '../stores/useQuickNotesStore'
@@ -377,7 +378,7 @@ function FocusModeOverlay({
 }
 
 function SplitNodeView({ node }: { node: SplitNode }) {
-  const { focusedPanelId, setFocusedPanel, closePanel, setSplitRatio, setPanelSession, splitRight, splitDown, maximizedPanelId, toggleMaximizePanel, spotlightMode, toggleSpotlightMode } = useUIStore()
+  const { splitRoot, focusedPanelId, setFocusedPanel, closePanel, setSplitRatio, setPanelSession, splitRight, splitDown, expandPanel, maximizedPanelId, toggleMaximizePanel, spotlightMode, toggleSpotlightMode } = useUIStore()
   const { sessions, setActiveSession, deleteSession, createQuickTerminal, addLocalSession } = useSessionStore()
   const { agents: agentsList } = useAgentStore()
 
@@ -554,6 +555,21 @@ function SplitNodeView({ node }: { node: SplitNode }) {
     if (panelMenuItems.length > 0) {
       panelMenuItems.push({ type: 'separator' })
     }
+    panelMenuItems.push(
+      {
+        label: 'Expand horizontally',
+        icon: <ExpandHorizontalIcon />,
+        disabled: !canExpandPanel(splitRoot, node.id, 'horizontal'),
+        action: () => expandPanel(node.id, 'horizontal')
+      },
+      {
+        label: 'Expand vertically',
+        icon: <ExpandVerticalIcon />,
+        disabled: !canExpandPanel(splitRoot, node.id, 'vertical'),
+        action: () => expandPanel(node.id, 'vertical')
+      },
+      { type: 'separator' }
+    )
     panelMenuItems.push(
       {
         label: spotlightMode ? 'Turn off Spotlight' : 'Spotlight',

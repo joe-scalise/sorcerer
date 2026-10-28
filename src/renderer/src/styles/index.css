@@ -3566,6 +3566,7 @@ button:focus-visible,
 .split-container {
   flex: 1;
   display: flex;
+  min-width: 0;
   min-height: 0;
 }
 
