@@ -85,10 +85,6 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential python3 xvfb
 
-      - name: Install libfuse2 (AppImage packaging)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y libfuse2
-
       - name: Generate macOS icon
         if: runner.os == 'macOS'
         run: |
@@ -184,6 +180,44 @@ jobs:
           AZURE_CODE_SIGNING_ENDPOINT: ${{ secrets.AZURE_CODE_SIGNING_ENDPOINT }}
           AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CODE_SIGNING_PROFILE: ${{ secrets.AZURE_CODE_SIGNING_PROFILE }}
+
+      - name: Smoke test AppImage without system FUSE2
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Test the downloadable runtime, not just linux-unpacked. Runner images
+          # can preinstall FUSE2, hiding regressions for fresh Arch/Omarchy users.
+          for package in libfuse2 libfuse2t64; do
+            if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
+              sudo apt-get remove -y "$package"
+            fi
+          done
+          if ldconfig -p | grep 'libfuse.so.2'; then
+            echo 'FUSE2 must be absent for this check' >&2
+            exit 1
+          fi
+          appimages=(dist/*.AppImage)
+          test "${#appimages[@]}" -eq 1
+          chmod +x "${appimages[0]}"
+          mount_log=$(mktemp)
+          timeout 30s "${appimages[0]}" --appimage-mount > "$mount_log" &
+          mount_pid=$!
+          trap 'kill "$mount_pid" 2>/dev/null || true; wait "$mount_pid" 2>/dev/null || true; rm -f "$mount_log"' EXIT
+          for attempt in {1..20}; do
+            mountpoint=$(head -n 1 "$mount_log")
+            if [[ -n "$mountpoint" && -x "$mountpoint/AppRun" ]]; then
+              echo 'AppImage mounted successfully without system FUSE2'
+              exit 0
+            fi
+            if ! kill -0 "$mount_pid" 2>/dev/null; then
+              echo 'AppImage runtime exited before mounting' >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo 'AppImage runtime did not mount within 20 seconds' >&2
+          exit 1
 
       - name: Smoke test packaged native dependencies
         run: node scripts/smoke-native.cjs --packaged

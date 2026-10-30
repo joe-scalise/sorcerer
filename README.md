@@ -11,6 +11,20 @@ Grab the latest release for your platform:
 
 **[Download for Windows, macOS, and Linux](https://github.com/joe-scalise/sorcerer/releases/latest)**
 
+**Linux (including Arch and Omarchy):** Download the x86-64 `.AppImage`, keep it
+in a folder such as `~/Applications`, and enable **Allow executing file as program**
+in your file manager's properties before opening it. From a terminal in that
+folder, you can instead run:
+
+```bash
+chmod +x Sorcerer-*.AppImage
+./Sorcerer-*.AppImage
+```
+
+Starting with v1.11.1, the AppImage includes its FUSE runtime; installing `fuse2`
+separately is no longer required. The AppImage runs directly and does not
+automatically add an application-launcher entry.
+
 **Android companion:** Sideloadable Sorcerer Remote APKs use independent
 `android-v*` releases. See the [Android setup guide](docs/android.md).
 
