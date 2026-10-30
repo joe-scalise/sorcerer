@@ -1,6 +1,6 @@
 {
   "name": "sorcerer",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "description": "Multi-session desktop workbench for orchestrating AI coding agents in isolated Git worktrees.",
   "homepage": "https://sorcerer.sh",
   "repository": {
@@ -68,6 +68,9 @@
       "allowToChangeInstallationDirectory": true
     },
     "npmRebuild": false,
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "afterSign": "./scripts/notarize-macos.js",
     "artifactName": "Sorcerer-${version}-${os}-${arch}.${ext}",
     "publish": {
